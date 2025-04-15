@@ -7,13 +7,14 @@ This module encapsulates the core logic for the quantum algorithm.
 
 from qiskit import QuantumCircuit, Aer, execute
 
+
 class PathPlanningService:
     """Service class for quantum path-planning."""
 
     def __init__(self):
         """Initialize the quantum circuit and backend."""
         self.circuit = QuantumCircuit(2)
-        self.backend = Aer.get_backend('qasm_simulator')
+        self.backend = Aer.get_backend("qasm_simulator")
 
     def execute(self):
         """Execute the quantum path-planning algorithm."""
