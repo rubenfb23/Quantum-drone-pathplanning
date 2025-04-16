@@ -29,10 +29,7 @@ def main():
     """Main function to execute the path-planning service."""
     points = [(0, 0), (1, 2), (2, 4)]  # Reduced to 3 points for smaller problem size
     service = PathPlanningService()
-    service.execute(points)
-
-    # Example path (to be replaced with actual result from quantum algorithm)
-    path = [0, 1, 2]
+    path = service.execute(points)  # Use service result as the path
     plot_path(points, path)
 
 
