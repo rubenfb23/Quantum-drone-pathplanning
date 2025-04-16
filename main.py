@@ -32,7 +32,7 @@ def main():
     service.execute(points)
 
     # Example path (to be replaced with actual result from quantum algorithm)
-    path = [0, 1, 2, 3]
+    path = [0, 1, 2]
     plot_path(points, path)
 
 

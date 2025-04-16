@@ -1,6 +1,6 @@
 # Quantum Drone Path-Planning
 
-This project is designed to develop a quantum algorithm for drone path-planning using Qiskit 2.0.
+This project develops a quantum algorithm for drone path-planning using Qibo.
 
 ## Setup
 
@@ -13,14 +13,32 @@ This project is designed to develop a quantum algorithm for drone path-planning 
    pip install -r requirements.txt
    ```
 
-## Usage
-
-Start developing your quantum algorithm in the `main.py` file or create new modules as needed.
-
-## Requirements
+## Dependencies
 
 - Python 3.9+
-- Qiskit 2.0
+- Qibo
+- NumPy
+- Matplotlib
+
+## Usage
+
+Start developing your quantum algorithm by running the main script:
+```bash
+python main.py
+```
+
+The project uses Qibo's implementation of QAOA (Quantum Approximate Optimization Algorithm) to solve the Traveling Salesperson Problem for drone path planning.
+
+## Project Structure
+
+- `main.py`: Entry point that initializes the path planning service and visualizes results
+- `services/path_planning_service.py`: Core quantum algorithm implementation using Qibo
+
+## Key Features
+
+- Quantum solution for path optimization problems
+- Visualization of calculated drone paths
+- QAOA implementation for combinatorial optimization
 
 ## License
 
