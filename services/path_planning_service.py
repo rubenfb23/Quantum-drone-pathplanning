@@ -24,10 +24,12 @@ class PathPlanningService:
         Execute the quantum path-planning algorithm with the given points.
         """
         distance_matrix = self._calculate_distance_matrix(points)
-        num_qubits = (
-            len(distance_matrix) ** 2
-        )  # Assuming TSP encoding requires n^2 qubits for n points
         hamiltonian = self._create_tsp_hamiltonian(distance_matrix)
+
+        # Correct the calculation of num_qubits to match the Hamiltonian's requirements
+        num_qubits = (
+            hamiltonian.nqubits
+        )  # Use the number of qubits from the Hamiltonian
 
         # Define a mixer Hamiltonian using qibo.symbols.X
         # Sum Pauli X operators over all qubits
@@ -37,17 +39,35 @@ class PathPlanningService:
         # Initialize QAOA model with the cost and mixer Hamiltonians
         qaoa = models.QAOA(hamiltonian, mixer=mixer)  # <-- CORRECTED LINE
 
-        # Optimize QAOA parameters
+        # Define initial parameters before setting them
         initial_parameters = np.random.uniform(
             0, 2 * np.pi, 2 * self.depth
         )  # Use 2*depth params
-        best_params, _, _ = optimize(  # optimize returns 3 values usually
-            qaoa, initial_parameters, method=self.optimizer
+
+        # Ensure parameters are initialized before execution
+        if not hasattr(qaoa, "params") or qaoa.params is None:
+            qaoa.set_parameters(initial_parameters)  # Set initial parameters explicitly
+
+        # Ensure the initial state matches the expected shape
+        initial_state = np.zeros(
+            2**num_qubits, dtype=complex
+        )  # Correctly match the number of qubits
+        initial_state[0] = 1.0  # Set the initial state to |0...0>
+
+        # Optimize QAOA parameters
+        # Use the minimize method of the qaoa object
+        result = qaoa.minimize(
+            initial_parameters, initial_state=initial_state, method=self.optimizer
         )
+        best_params = result[1]  # Extract best parameters from the result
 
         # Execute the final circuit
-        qaoa.set_parameters(best_params)
-        result = qaoa(nshots=1000)  # Execute the optimized QAOA circuit
+        qaoa.set_parameters(
+            best_params
+        )  # Ensure best parameters are set before execution
+
+        # Execute the final circuit with the correct initial state
+        result = qaoa(initial_state=initial_state, nshots=1000)
 
         return self._decode_result(result, points)
 
