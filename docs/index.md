@@ -9,8 +9,14 @@ The project implements a QAOA-based solution to the Traveling Salesman Problem (
 ## Getting Started
 
 - Install dependencies: `pip install -r requirements.txt`
-- Run the main script: `python main.py`
+- Prepare input points:
+  - Edit `points.csv` with `x,y` headers or supply your own CSV file.
+- Run the main script:
+  ```bash
+  python main.py
+  ```
 
 ## API Reference
 
+- [main.py](api/main.md): Entry point functions for loading points, plotting, and running the service.
 - [PathPlanningService](api/path_planning_service.md): Core service for QAOA-based path planning.

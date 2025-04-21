@@ -1,5 +1,4 @@
-# PathPlanningServ
-ice
+# PathPlanningService
 
 Service class for quantum path-planning using Qibo.
 
@@ -22,10 +21,10 @@ Initializes the Qibo backend optimized for CPU execution.
 
 `find_optimal_path(points: List[Tuple[float, float]]) -> List[int]`
 
-Finds the optimal tour of given points using QAOA.
-
-- **points**: List of (x, y) coordinates.
-- Returns a sequence of point indices representing the optimal path.
+- **points**: List of (x, y) coordinates to visit.
+- **Returns**: Sequence of point indices representing the optimal path.
+- **Raises**: `ValueError` if `points` is empty.
+- **Notes**: Uses the configured `depth`, `optimizer`, and `shots` parameters to run QAOA and sample the final circuit.
 
 Steps:
 1. Validates inputs.
