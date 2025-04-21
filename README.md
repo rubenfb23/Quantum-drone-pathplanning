@@ -4,9 +4,9 @@ This project demonstrates a quantum algorithm for drone path-planning using Qibo
 
 ## Project Structure
 
-- `main.py`: Entry point. Loads points from CSV, runs the quantum algorithm, and visualizes the result.
-- `services/path_planning_service.py`: Implements `PathPlanningService` for quantum optimization logic.
-- `points.csv`: Sample input file with x,y coordinates.
+- `src/main.py`: Entry point. Loads points from CSV, runs the quantum algorithm, and visualizes the result.
+- `src/services/path_planning_service.py`: Implements `PathPlanningService` for quantum optimization logic.
+- `src/points.csv`: Sample input file with x,y coordinates.
 - `docs/`: Project documentation and API reference.
 - `requirements.txt`: Python dependencies.
 
