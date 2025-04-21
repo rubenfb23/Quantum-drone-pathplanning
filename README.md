@@ -4,8 +4,11 @@ This project demonstrates a quantum algorithm for drone path-planning using Qibo
 
 ## Project Structure
 
-- `main.py`: Entry point. Sets up the problem, runs the quantum algorithm, and visualizes the result.
-- `services/path_planning_service.py`: Contains the `PathPlanningService` class, which encapsulates the quantum optimization logic.
+- `main.py`: Entry point. Loads points from CSV, runs the quantum algorithm, and visualizes the result.
+- `services/path_planning_service.py`: Implements `PathPlanningService` for quantum optimization logic.
+- `points.csv`: Sample input file with x,y coordinates.
+- `docs/`: Project documentation and API reference.
+- `requirements.txt`: Python dependencies.
 
 ## How It Works
 
@@ -17,22 +20,25 @@ This project demonstrates a quantum algorithm for drone path-planning using Qibo
 
 1. Install dependencies:
    ```bash
-   pip install qibo matplotlib
+   pip install -r requirements.txt
    ```
 
-2. Run the main script:
+2. Prepare input points:
+   - Edit `points.csv` or supply a custom CSV file with `x,y` headers.
+
+3. Run the main script:
    ```bash
    python main.py
    ```
 
-3. You can customize the QAOA depth and optimizer in `main.py`:
+4. Customize QAOA parameters in `main.py`:
    ```python
-   service = PathPlanningService(depth=2, optimizer="BFGS")
+   service = PathPlanningService(depth=3, optimizer="COBYLA", shots=200)
    ```
 
 ## Customization
-- **Input Points**: Edit the `points` list in `main.py` to change the locations.
-- **QAOA Parameters**: Adjust `depth` and `optimizer` when creating the service.
+- **Input Points**: Modify `points.csv` or implement your own loader via `load_points_from_csv`.
+- **QAOA Parameters**: Adjust `depth`, `optimizer`, and `shots` when creating the service.
 
 ## Clean Code Improvements
 - Clear and descriptive names for classes, methods, and variables.
