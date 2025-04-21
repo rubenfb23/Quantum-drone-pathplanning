@@ -19,7 +19,7 @@ class PathPlanningService:
         self,
         depth: int = 2,
         optimizer: str = "BFGS",
-        shots: int = 100,
+        shots: int = 200,
         penalty_weight: float = None,  # added
     ):
         """Initialize the Qibo backend and QAOA parameters.
