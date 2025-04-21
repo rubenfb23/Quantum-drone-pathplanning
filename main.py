@@ -1,7 +1,6 @@
-# main.py
-
 """
 Entry point for the quantum drone path-planning project.
+
 This file initializes the quantum algorithm and
 handles high-level orchestration.
 """
@@ -27,14 +26,11 @@ def plot_path(points: List[Tuple[float, float]], path: List[int]) -> None:
     """Visualize the path on a 2D map."""
     if not points or not path:
         raise ValueError("Both 'points' and 'path' must be non-empty.")
-
     x, y = zip(*points)
     plt.figure(figsize=(8, 6))
-    plt.plot(x, y, "bo-", label="Points")
-
+    plt.plot(x, y, "bo", label="Points")
     for i, txt in enumerate(range(len(points))):
         plt.annotate(txt, (x[i], y[i]))
-
     plt.plot([x[i] for i in path], [y[i] for i in path], "r-", label="Path")
     plt.legend()
     plt.title("Drone Path Planning")
@@ -45,13 +41,19 @@ def plot_path(points: List[Tuple[float, float]], path: List[int]) -> None:
 
 
 def main():
-    """Main function to execute the path-planning service."""
+    """Main function to execute the path-planning servi ce."""
     # Load points from CSV
     csv_path = os.path.join(os.path.dirname(__file__), "points.csv")
     points = load_points_from_csv(csv_path)
+
     service = PathPlanningService(depth=2, optimizer="BFGS")
+
     try:
+        # Obtener el camino óptimo
         path = service.find_optimal_path(points)
+        # Convertir cada elemento a un entero estándar para una impresión legible
+        path = [int(p) for p in path]
+        print(f"Received path: {path}")
         plot_path(points, path)
     except Exception as e:
         print(f"Error during path planning: {e}")
