@@ -144,3 +144,4 @@ cython_debug/
 Thumbs.db
 
 .pyc
+.github/copilot-instructions.md
