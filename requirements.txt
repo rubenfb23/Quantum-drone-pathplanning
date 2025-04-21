@@ -1,0 +1,5 @@
+qibo
+numpy
+matplotlib
+numba
+scipy
