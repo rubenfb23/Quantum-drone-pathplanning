@@ -20,6 +20,7 @@ class PathPlanningService:
         depth: int = 2,
         optimizer: str = "BFGS",
         shots: int = 100,
+        penalty_weight: float = None,  # added
     ):
         """Initialize the Qibo backend and QAOA parameters.
 
@@ -31,11 +32,14 @@ class PathPlanningService:
                 Defaults to "BFGS".
             shots (int): The number of shots for the final circuit execution.
                 Defaults to 100.
+            penalty_weight (float): The penalty weight for the constraints.
+                Defaults to None.
         """
         set_backend("qibojit", platform="numba")  # Optimized for CPU
         self.depth = depth
         self.optimizer = optimizer
         self.shots = shots
+        self.penalty_weight = penalty_weight  # new
 
     def find_optimal_path(self, points):
         """
@@ -50,37 +54,52 @@ class PathPlanningService:
         if not points:
             raise ValueError("Input 'points' list cannot be empty.")
         if len(points) < 2:
-            # Handle cases with 0 or 1 point trivially
             return list(range(len(points)))
 
         num_points = len(points)
-        num_qubits = num_points * num_points  # TSP encoding uses n^2 qubits
+        num_qubits = (
+            num_points * num_points
+        )  # Se usan n^2 qubits para la codificación TSP
 
         distance_matrix = self._calculate_distance_matrix(points)
         hamiltonian = self._create_tsp_hamiltonian(distance_matrix)
 
-        # Initialize QAOA model; depth is encoded in initial_parameters length
-        qaoa = models.QAOA(hamiltonian)
-        initial_parameters = [0.01] * (2 * self.depth)
-        # Optimize variational parameters
-        best_energy, best_params, _ = qaoa.minimize(
-            initial_parameters,
-            method=self.optimizer,
+        # debug: show effective penalty and Hamiltonian
+        penalty = (
+            self.penalty_weight
+            if self.penalty_weight is not None
+            else np.max(distance_matrix) * num_points * 10
         )
 
-        # Execute QAOA circuit and decode state via argmax
+        # Inicializa el modelo QAOA; la profundidad se cifra en la longitud de initial_parameters
+        qaoa = models.QAOA(hamiltonian)
+        initial_parameters = [0.01] * (2 * self.depth)
+
+        # Optimiza los parámetros variacionales
+        best_energy, best_params, _ = qaoa.minimize(
+            initial_parameters, method=self.optimizer
+        )
+
+        # Ejecuta el circuito QAOA y decodifica el estado mediante argmax
         qaoa.set_parameters(best_params)
-        state = qaoa.execute()
+        state = qaoa.execute()  # Se utiliza el vector de estado obtenido
         probs = np.abs(state) ** 2
         idx = int(np.argmax(probs))
         state_bin = format(idx, f"0{num_qubits}b")
-        # Decode bitstring into TSP path
-        num_points = len(points)
-        path = [0] * num_points
-        for bit_index, bit in enumerate(state_bin):
-            if bit == "1":
-                i, j = divmod(bit_index, num_points)
-                path[j] = i
+
+        # Convertir el bitstring a una matriz con forma (num_points x num_points)
+        # donde cada fila corresponde a una ciudad y cada columna a una posición en la ruta.
+        matrix = np.array(list(state_bin), dtype=int).reshape((num_points, num_points))
+        # Decode bitstring: require exactly one '1' per column
+        path = [-1] * num_points
+        for j in range(num_points):
+            col = matrix[:, j]
+            ones = np.where(col == 1)[0]
+            if len(ones) != 1:
+                raise ValueError(
+                    f"Invalid quantum output: column {j} has {len(ones)} ones."
+                )
+            path[j] = ones[0]
         return path
 
     def _calculate_distance_matrix(self, points):
@@ -98,37 +117,39 @@ class PathPlanningService:
 
     def _create_tsp_hamiltonian(self, distance_matrix):
         """
-        Create the TSP Hamiltonian using Qibo.
+        True QUBO encoding with squared constraints:
+          - b_ij = (1 − Z_ij)/2
+          - cost    = Σ_{i≠j} d[i,j] * b_ij
+          - constraints = Σ_i (1−Σ_j b_ij)^2 + Σ_j (1−Σ_i b_ij)^2
         """
         num_points = len(distance_matrix)
-
-        # Optimize Hamiltonian construction by using
-        # sparse representations
-
-        # Cost term: Minimize the total distance
-        cost_terms = []
-        for i in range(num_points):
-            for j in range(num_points):
-                if i != j:
-                    weight = distance_matrix[i, j]
-                    z_pauli = Z(i * num_points + j)
-                    cost_terms.append((weight, z_pauli))
-
-        # Constraint terms: Ensure valid TSP path
-        constraint_terms = []
-        for i in range(num_points):
-            for j in range(num_points):
-                if i != j:
-                    z_pauli = Z(i * num_points + j)
-                    constraint_terms.append((1.0, z_pauli))
-
-        # Combine terms into a single Hamiltonian
-        # expression using sparse matrices
-        hamiltonian_expr = sum(
-            weight * term for weight, term in cost_terms + constraint_terms
+        n = num_points
+        penalty = (
+            self.penalty_weight
+            if self.penalty_weight is not None
+            else np.max(distance_matrix) * n * 10
         )
-        hamiltonian = hamiltonians.SymbolicHamiltonian(hamiltonian_expr)
-        return hamiltonian
+
+        # cost term
+        H_cost = 0
+        for i in range(n):
+            for j in range(n):
+                if i != j:
+                    q = i * n + j
+                    H_cost += distance_matrix[i, j] * (1 - Z(q)) / 2
+
+        # squared‐constraint terms
+        H_cons = 0
+        # each city appears exactly once in the tour (row sums)
+        for i in range(n):
+            row_qubits = [(1 - Z(i * n + j)) / 2 for j in range(n)]
+            H_cons += (1 - sum(row_qubits)) ** 2
+        # each position in the tour is occupied by exactly one city (column sums)
+        for j in range(n):
+            col_qubits = [(1 - Z(i * n + j)) / 2 for i in range(n)]
+            H_cons += (1 - sum(col_qubits)) ** 2
+
+        return hamiltonians.SymbolicHamiltonian(H_cost + penalty * H_cons)
 
     def _decode_result(self, result, points, num_qubits):
         """
