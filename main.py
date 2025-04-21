@@ -9,6 +9,18 @@ handles high-level orchestration.
 import matplotlib.pyplot as plt
 from services.path_planning_service import PathPlanningService
 from typing import List, Tuple
+import csv
+import os
+
+
+def load_points_from_csv(csv_file: str) -> List[Tuple[float, float]]:
+    """Load point coordinates from a CSV file with headers 'x' and 'y'."""
+    points = []
+    with open(csv_file, newline="") as csvfile:
+        reader = csv.DictReader(csvfile)
+        for row in reader:
+            points.append((float(row["x"]), float(row["y"])))
+    return points
 
 
 def plot_path(points: List[Tuple[float, float]], path: List[int]) -> None:
@@ -34,12 +46,9 @@ def plot_path(points: List[Tuple[float, float]], path: List[int]) -> None:
 
 def main():
     """Main function to execute the path-planning service."""
-    points = [
-        (0, 0),
-        (1, 5),
-        (2, 3),
-        (4, 1),
-    ]  # Example points
+    # Load points from CSV
+    csv_path = os.path.join(os.path.dirname(__file__), "points.csv")
+    points = load_points_from_csv(csv_path)
     service = PathPlanningService(depth=2, optimizer="BFGS")
     try:
         path = service.find_optimal_path(points)
