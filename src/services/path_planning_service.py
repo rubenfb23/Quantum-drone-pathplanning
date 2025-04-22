@@ -74,29 +74,11 @@ class PathPlanningService:
             initial_parameters, method=self.optimizer
         )
 
-        # Ejecuta el circuito QAOA y decodifica el estado mediante argmax
+        # Ejecuta el circuito QAOA mediante muestreo y decodifica resultados
         qaoa.set_parameters(best_params)
-        state = qaoa.execute()  # Se utiliza el vector de estado obtenido
-        probs = np.abs(state) ** 2
-        idx = int(np.argmax(probs))
-        state_bin = format(idx, f"0{num_qubits}b")
-
-        # Convertir bitstring a matriz (num_points x num_points)
-        # Cada fila es una ciudad; cada columna es posición en ruta.
-        values = list(state_bin)
-        matrix = np.array(values, dtype=int)
-        matrix = matrix.reshape((num_points, num_points))
-        # Decode bitstring: require exactly one '1' per column
-        path = [-1] * num_points
-        for j in range(num_points):
-            col = matrix[:, j]
-            ones = np.where(col == 1)[0]
-            if len(ones) != 1:
-                raise ValueError(
-                    f"Invalid quantum output: column {j} has {len(ones)} ones."
-                )
-            path[j] = ones[0]
-        return path
+        result = qaoa.sample(shots=self.shots)
+        # Decodifica el resultado usando frecuencias de medición
+        return self._decode_result(result, points, num_qubits)
 
     def _calculate_distance_matrix(self, points):
         """
@@ -152,11 +134,24 @@ class PathPlanningService:
         """
         Decode the result of the quantum computation into a valid path.
         """
-        counts = result.frequencies()
-        most_probable_state = max(counts, key=counts.get)
-        print("Most probable state:", most_probable_state)
-        state = most_probable_state.replace(" ", "")
         num_points = len(points)
+        counts = result.frequencies()
+        # Normalize keys by removing spaces
+        processed_counts = {s.replace(" ", ""): c for s, c in counts.items()}
+        # Select the most probable bitstring satisfying row/column constraints
+        valid_state = None
+        for s in sorted(
+            processed_counts,
+            key=processed_counts.get,
+            reverse=True,
+        ):
+            if self._is_valid_bitstring(s, num_points):
+                valid_state = s
+                break
+        if valid_state is None:
+            raise ValueError("No valid solution found in measurement results.")
+        print("Selected valid state:", valid_state)
+        state = valid_state
         # Pad state if necessary
         if len(state) < num_qubits:
             state = state.zfill(num_qubits)
@@ -166,3 +161,21 @@ class PathPlanningService:
                 i, j = divmod(idx, num_points)
                 path[j] = i
         return path
+
+    def _is_valid_bitstring(self, bitstring, num_points):
+        """
+        Check if bitstring is valid TSP encoding.
+        Requires one '1' per row and column.
+        """
+        n = num_points
+        if len(bitstring) != n * n:
+            return False
+        # Check exactly one '1' per row
+        for i in range(n):
+            if bitstring[i * n : (i + 1) * n].count("1") != 1:
+                return False
+        # Check exactly one '1' per column
+        for j in range(n):
+            if sum(bitstring[i * n + j] == "1" for i in range(n)) != 1:
+                return False
+        return True
