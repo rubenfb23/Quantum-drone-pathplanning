@@ -4,4 +4,4 @@ matplotlib
 numba
 scipy
 qibojit
-cupy-cuda12x
+cuquantum-cu12
