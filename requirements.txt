@@ -1,4 +1,4 @@
-qibo
+qibo[cuda]
 numpy
 matplotlib
 numba
