@@ -1,15 +1,22 @@
 # services/path_planning_service.py
 
-# ... (imports remain the same, including tqdm) ...
+"""
+Service module for quantum path-planning logic using QAOA for TSP.
+Encapsulates the core logic, backend setup, Hamiltonian creation,
+optimization, and result decoding directly from the state vector.
+Includes progress bar via tqdm.
+"""
+
 from qibo import hamiltonians, models, set_backend, set_precision, gates, get_backend
 from qibo.symbols import Z, I
 import numpy as np
 import time
-from tqdm import tqdm  # Ensure tqdm is imported
+from tqdm import tqdm  # Import tqdm
 
 
 class PathPlanningService:
-    # ... (__init__ remains the same) ...
+    """Service class for quantum path-planning using Qibo."""
+
     def __init__(
         self,
         depth: int = 4,
@@ -80,12 +87,10 @@ class PathPlanningService:
         print(f"\nStarting TSP optimization for {num_points} points.")
         start_time = time.time()
 
-        # --- Barra de Progreso tqdm (con monitor_interval=0) ---
+        # --- Barra de Progreso tqdm (Standard Call) ---
         total_stages = 5
-        # Add monitor_interval=0 to disable the background thread
-        with tqdm(
-            total=total_stages, desc="TSP Optimization Progress", monitor_interval=0
-        ) as pbar:
+        # Remove the unsupported monitor_interval argument
+        with tqdm(total=total_stages, desc="TSP Optimization Progress") as pbar:
 
             # Etapa 1: Calcular Matriz de Distancias
             pbar.set_description("Stage 1/5: Calculating distances")
@@ -112,7 +117,7 @@ class PathPlanningService:
                 best_energy, best_params, _ = qaoa.minimize(
                     initial_parameters, method=self.optimizer, options={"disp": False}
                 )
-                # Add newline only if optimization output might interfere with final bar state
+                # Add newline for cleaner output after optimization if needed
                 print(f"\nOptimization finished. Best energy found: {best_energy:.4f}")
             except Exception as e:
                 pbar.close()
@@ -122,7 +127,7 @@ class PathPlanningService:
 
             # Etapa 5: Ejecutar Circuito Final y Decodificar
             pbar.set_description("Stage 5/5: Final execution & decoding")
-            try:  # Wrap decoding in try block as well
+            try:
                 qaoa.set_parameters(best_params)
                 final_state_vector = qaoa.execute()
 
@@ -135,7 +140,6 @@ class PathPlanningService:
                 sorted_indices = np.argsort(probabilities)[::-1]
                 best_valid_path = None
                 found_valid = False
-                # Search for valid state (no print needed here)
                 for idx in sorted_indices:
                     prob = probabilities[idx]
                     if prob < 1e-6 and found_valid:
@@ -170,14 +174,11 @@ class PathPlanningService:
         # --- Fin Barra de Progreso ---
 
         end_time = time.time()
-        print(
-            f"\nTotal execution time: {end_time - start_time:.2f} seconds."
-        )  # Add newline for clarity
+        print(f"\nTotal execution time: {end_time - start_time:.2f} seconds.")
         return path
 
     # --- Métodos Auxiliares (_calculate_distance_matrix, etc.) ---
     # (No changes needed in the helper methods)
-    # ... (rest of the helper methods remain the same) ...
     def _calculate_distance_matrix(self, points: list) -> np.ndarray:
         num_points = len(points)
         points_array = np.array(points, dtype=self.numpy_real_dtype)
@@ -197,7 +198,7 @@ class PathPlanningService:
             self.penalty_weight = self.numpy_real_dtype(max_dist * (n**2))
         else:
             self.penalty_weight = self.numpy_real_dtype(self.penalty_weight)
-        # print(f"Using penalty weight: {self.penalty_weight:.2f}") # Optional: uncomment for debugging
+        # print(f"Using penalty weight: {self.penalty_weight:.2f}") # Optional
         H_cost = 0
         for i in range(n):
             for k in range(n):
@@ -254,9 +255,6 @@ class PathPlanningService:
         try:
             row_indices = np.argmax(matrix, axis=0)
             path = list(row_indices)
-            # Basic check can be done here or in the caller
-            # if len(set(path)) != num_points:
-            #      print(f"Internal Warning: Decoded path {path} from supposedly valid state does not contain unique cities.")
         except Exception as e:
             print(f"Error during path decoding from matrix: {e}")
             raise RuntimeError("Could not decode path from the state matrix.")
@@ -273,3 +271,6 @@ class PathPlanningService:
             return np.all(row_sums == 1) and np.all(col_sums == 1)
         except Exception:
             return False
+
+
+# --- Fin de la clase PathPlanningService ---
