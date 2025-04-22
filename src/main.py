@@ -41,7 +41,7 @@ def plot_path(points: List[Tuple[float, float]], path: List[int]) -> None:
 
 
 def main():
-    """Main function to execute the path-planning servi ce."""
+    """Main function to execute the path-planning service."""
     # Load points from CSV
     csv_path = os.path.join(os.path.dirname(__file__), "points.csv")
     points = load_points_from_csv(csv_path)
@@ -51,7 +51,8 @@ def main():
     try:
         # Obtener el camino óptimo
         path = service.find_optimal_path(points)
-        # Convertir cada elemento a un entero estándar para una impresión legible
+        # Convertir cada elemento a entero estándar
+        # para impresión legible
         path = [int(p) for p in path]
         print(f"Received path: {path}")
         plot_path(points, path)
