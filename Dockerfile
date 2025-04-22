@@ -1,8 +1,9 @@
-FROM nvidia/cuda:12.4.0-cudnn8-runtime-ubuntu22.04
+FROM nvidia/cuda:12.4.0-devel-ubuntu22.04
 
 # Install Python and pip
 RUN apt-get update && \
     apt-get install -y python3 python3-pip && \
+    apt-get install -y python3-dev && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
