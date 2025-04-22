@@ -188,6 +188,9 @@ class PathPlanningService:
         """
         Generate measurement counts from statevector by sampling.
         """
+        # Convert Qibo tensor to numpy array if needed
+        if hasattr(statevector, "get"):
+            statevector = statevector.get()
         probs = np.abs(statevector) ** 2
         # Sample indices according to probabilities
         indices = np.random.choice(len(probs), size=shots, p=probs)
