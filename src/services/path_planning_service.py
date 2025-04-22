@@ -210,6 +210,8 @@ class PathPlanningService:
         distance_matrix = np.sqrt(np.sum(diff**2, axis=-1))
         return distance_matrix
 
+        # (Make sure this method is inside the PathPlanningService class)
+
     def _create_tsp_hamiltonian(
         self, distance_matrix: np.ndarray
     ) -> hamiltonians.SymbolicHamiltonian:
@@ -226,7 +228,7 @@ class PathPlanningService:
             self.penalty_weight = self.numpy_real_dtype(max_dist * n * 1.5)
             print(f"Auto-calculated penalty weight: {self.penalty_weight:.2f}")
         else:
-            # Ensure provided weight matches precision if needed, though usually handled ok
+            # Ensure provided weight matches precision if needed
             self.penalty_weight = self.numpy_real_dtype(self.penalty_weight)
             print(f"Using provided penalty weight: {self.penalty_weight:.2f}")
 
@@ -255,14 +257,19 @@ class PathPlanningService:
         # H_cons: Squared constraints
         H_cons = 0
         print("Building H_cons...")
+        # Restricción 1: Cada ciudad aparece exactamente una vez (suma por filas = 1)
         for i in range(n):
             row_sum_term = sum([(1 - Z(i * n + j)) / 2 for j in range(n)])
             H_cons += (1 - row_sum_term) ** 2
+
+        # Restricción 2: Cada posición es ocupada por exactamente una ciudad (suma por columnas = 1)
         for j in range(n):
+            # Correctly calculate the sum term for the column
             col_sum_term = sum([(1 - Z(i * n + j)) / 2 for i in range(n)])
-            H_cons += (
-                1 - sum(col_qubits)
-            ) ** 2  # <<< Correction: was using old 'col_qubits' variable from previous file version
+            # --- CORRECTED LINE ---
+            # Use the calculated col_sum_term, not the non-existent col_qubits
+            H_cons += (1 - col_sum_term) ** 2
+            # --- END CORRECTION ---
 
         print("Hamiltonian terms built. Combining H_cost and H_cons...")
         # Penalty weight is already float32/64
