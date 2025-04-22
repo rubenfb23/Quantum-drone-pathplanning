@@ -142,17 +142,33 @@ class PathPlanningService:
             counts = counts.frequencies()
         # Normalize keys by removing spaces
         processed_counts = {s.replace(" ", ""): c for s, c in counts.items()}
-        # Select the most probable bitstring satisfying row/column constraints
-        valid_state = None
-        for s in sorted(
+        # Debugging variables
+        self.debug_counts = counts
+        self.debug_processed_counts = processed_counts
+        # Sort states by count (descending)
+        sorted_states = sorted(
             processed_counts,
             key=processed_counts.get,
             reverse=True,
-        ):
+        )
+        self.debug_sorted_states = sorted_states
+        # Determine valid states among the sorted ones
+        self.debug_valid_states = [
+            s for s in sorted_states if self._is_valid_bitstring(s, num_points)
+        ]
+        # Print debugging info
+        print("DEBUG counts:", self.debug_counts)
+        print("DEBUG processed_counts:", self.debug_processed_counts)
+        print("DEBUG sorted_states (top 10):", sorted_states[:10])
+        print("DEBUG valid_states:", self.debug_valid_states)
+        # Select the most probable bitstring satisfying row/column constraints
+        valid_state = None
+        for s in sorted_states:
             if self._is_valid_bitstring(s, num_points):
                 valid_state = s
                 break
         if valid_state is None:
+            # No valid state found after debugging
             raise ValueError("No valid solution found in measurement results.")
         print("Selected valid state:", valid_state)
         state = valid_state
