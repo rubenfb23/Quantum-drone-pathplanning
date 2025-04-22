@@ -76,7 +76,8 @@ class PathPlanningService:
 
         # Ejecuta el circuito QAOA mediante muestreo y decodifica resultados
         qaoa.set_parameters(best_params)
-        result = qaoa.sample(shots=self.shots)
+        # Use execute with shots
+        result = qaoa.execute(shots=self.shots)
         # Decodifica el resultado usando frecuencias de medición
         return self._decode_result(result, points, num_qubits)
 
