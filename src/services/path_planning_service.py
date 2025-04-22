@@ -19,7 +19,7 @@ class PathPlanningService:
         self,
         depth: int = 2,
         optimizer: str = "BFGS",
-        shots: int = 200,
+        shots: int = 100,
         penalty_weight: float = None,  # added
     ):
         """Initialize the Qibo backend and QAOA parameters.
@@ -35,7 +35,7 @@ class PathPlanningService:
             penalty_weight (float): The penalty weight for the constraints.
                 Defaults to None.
         """
-        set_backend("qibojit", platform="numba")  # Optimized for CPU
+        set_backend("qibojit", platform="cuda")  # Optimized for GPU
         self.depth = depth
         self.optimizer = optimizer
         self.shots = shots
@@ -64,14 +64,8 @@ class PathPlanningService:
         distance_matrix = self._calculate_distance_matrix(points)
         hamiltonian = self._create_tsp_hamiltonian(distance_matrix)
 
-        # debug: show effective penalty and Hamiltonian
-        penalty = (
-            self.penalty_weight
-            if self.penalty_weight is not None
-            else np.max(distance_matrix) * num_points * 10
-        )
-
-        # Inicializa el modelo QAOA; la profundidad se cifra en la longitud de initial_parameters
+        # Inicializa el modelo QAOA.
+        # La profundidad viene de len(initial_parameters)
         qaoa = models.QAOA(hamiltonian)
         initial_parameters = [0.01] * (2 * self.depth)
 
@@ -87,9 +81,11 @@ class PathPlanningService:
         idx = int(np.argmax(probs))
         state_bin = format(idx, f"0{num_qubits}b")
 
-        # Convertir el bitstring a una matriz con forma (num_points x num_points)
-        # donde cada fila corresponde a una ciudad y cada columna a una posición en la ruta.
-        matrix = np.array(list(state_bin), dtype=int).reshape((num_points, num_points))
+        # Convertir bitstring a matriz (num_points x num_points)
+        # Cada fila es una ciudad; cada columna es posición en ruta.
+        values = list(state_bin)
+        matrix = np.array(values, dtype=int)
+        matrix = matrix.reshape((num_points, num_points))
         # Decode bitstring: require exactly one '1' per column
         path = [-1] * num_points
         for j in range(num_points):
@@ -144,7 +140,8 @@ class PathPlanningService:
         for i in range(n):
             row_qubits = [(1 - Z(i * n + j)) / 2 for j in range(n)]
             H_cons += (1 - sum(row_qubits)) ** 2
-        # each position in the tour is occupied by exactly one city (column sums)
+        # Cada posición en la ruta
+        # está ocupada por una ciudad única
         for j in range(n):
             col_qubits = [(1 - Z(i * n + j)) / 2 for i in range(n)]
             H_cons += (1 - sum(col_qubits)) ** 2
