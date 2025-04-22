@@ -17,4 +17,5 @@ COPY src/ ./src
 
 # Set working directory and default command
 WORKDIR /app/src
+RUN nvidia-smi
 CMD ["python3", "main.py"]
