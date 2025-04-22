@@ -4,7 +4,7 @@
 Service module for quantum path-planning logic using QAOA for TSP.
 Encapsulates the core logic, backend setup, Hamiltonian creation,
 optimization, and result decoding directly from the state vector.
-Includes progress bar via tqdm.
+Includes progress bar via tqdm, prioritizing performance by using leave=False.
 """
 
 from qibo import hamiltonians, models, set_backend, set_precision, gates, get_backend
@@ -88,14 +88,14 @@ class PathPlanningService:
         print(f"\nStarting TSP optimization for {num_points} points.")
         start_time = time.time()
 
-        # --- Barra de Progreso tqdm (Removed leave=False) ---
+        # --- Barra de Progreso tqdm (Reverted to leave=False for Performance) ---
         total_stages = 5
-        # Removed leave=False to ensure the final bar state is visible
+        # Re-added leave=False as it seems critical for performance in this env
         with tqdm(
             total=total_stages,
             desc="TSP Progress",
             file=sys.stdout,  # Write to standard out
-            # leave=False,      # REMOVED this line
+            leave=False,  # REINSTATED to avoid massive slowdown
             dynamic_ncols=True,  # Adjust to terminal width
         ) as pbar:
 
@@ -124,12 +124,10 @@ class PathPlanningService:
                 best_energy, best_params, _ = qaoa.minimize(
                     initial_parameters, method=self.optimizer, options={"disp": False}
                 )
-                # Add newline for cleaner output after optimization
+                # Output after optimization; bar will disappear due to leave=False
                 print(f"\nOptimization finished. Best energy found: {best_energy:.4f}")
             except Exception as e:
-                print(
-                    f"\nError during QAOA optimization: {e}"
-                )  # Ensure newline on error too
+                print(f"\nError during QAOA optimization: {e}")
                 raise RuntimeError("QAOA parameter optimization failed.") from e
             pbar.update(1)
 
@@ -175,19 +173,18 @@ class PathPlanningService:
                 # --- End Decoding ---
 
             except Exception as e:
-                print(
-                    f"\nError during state vector decoding: {e}"
-                )  # Ensure newline on error too
+                print(f"\nError during state vector decoding: {e}")
                 raise RuntimeError("Failed to decode the final state vector.") from e
-            pbar.update(1)  # Final update
+            # Final update before the bar disappears
+            pbar.update(1)
+            # Optional: Add a tiny sleep if rendering is the issue, but unlikely to help much
+            # time.sleep(0.1)
 
         # --- Fin Barra de Progreso ---
-        # The bar will now remain visible above this line
 
         end_time = time.time()
-        print(
-            f"\nTotal execution time: {end_time - start_time:.2f} seconds."
-        )  # Ensure newline before final output
+        # Final output is clean as the bar has been removed by leave=False
+        print(f"Total execution time: {end_time - start_time:.2f} seconds.")
         return path
 
     # --- Métodos Auxiliares (_calculate_distance_matrix, etc.) ---
