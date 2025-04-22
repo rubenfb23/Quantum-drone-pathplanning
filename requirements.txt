@@ -4,5 +4,5 @@ matplotlib
 numba
 scipy
 qibojit
-cuquantum-cu12
+cuquantum-python-cu12
 cupy-cuda12x
