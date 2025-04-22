@@ -4,7 +4,7 @@
 Service module for quantum path-planning logic using QAOA for TSP.
 Encapsulates the core logic, backend setup, Hamiltonian creation,
 optimization, and result decoding directly from the state vector.
-Includes progress bar via tqdm.
+Includes progress bar via tqdm, attempting to mitigate slowdown.
 """
 
 from qibo import hamiltonians, models, set_backend, set_precision, gates, get_backend
@@ -12,6 +12,7 @@ from qibo.symbols import Z, I
 import numpy as np
 import time
 from tqdm import tqdm  # Import tqdm
+import sys  # Import sys to specify stdout
 
 
 class PathPlanningService:
@@ -87,10 +88,16 @@ class PathPlanningService:
         print(f"\nStarting TSP optimization for {num_points} points.")
         start_time = time.time()
 
-        # --- Barra de Progreso tqdm (Standard Call) ---
+        # --- Barra de Progreso tqdm (Redirected Output, No Leave) ---
         total_stages = 5
-        # Remove the unsupported monitor_interval argument
-        with tqdm(total=total_stages, desc="TSP Optimization Progress") as pbar:
+        # Redirect to stdout, disable monitor, remove bar on completion
+        with tqdm(
+            total=total_stages,
+            desc="TSP Progress",
+            file=sys.stdout,  # Write to standard out
+            leave=False,  # Remove bar after completion
+            dynamic_ncols=True,  # Adjust to terminal width
+        ) as pbar:
 
             # Etapa 1: Calcular Matriz de Distancias
             pbar.set_description("Stage 1/5: Calculating distances")
@@ -115,12 +122,14 @@ class PathPlanningService:
             pbar.set_description(f"Stage 4/5: Optimizing ({self.optimizer})")
             try:
                 best_energy, best_params, _ = qaoa.minimize(
-                    initial_parameters, method=self.optimizer, options={"disp": False}
+                    initial_parameters,
+                    method=self.optimizer,
+                    options={"disp": False},  # Keep False to avoid interfering prints
                 )
-                # Add newline for cleaner output after optimization if needed
+                # Output after optimization, now clearly separated because tqdm bar will leave
                 print(f"\nOptimization finished. Best energy found: {best_energy:.4f}")
             except Exception as e:
-                pbar.close()
+                # pbar is closed automatically by 'with', but ensure newline
                 print(f"\nError during QAOA optimization: {e}")
                 raise RuntimeError("QAOA parameter optimization failed.") from e
             pbar.update(1)
@@ -131,11 +140,11 @@ class PathPlanningService:
                 qaoa.set_parameters(best_params)
                 final_state_vector = qaoa.execute()
 
+                # --- Decoding Logic (no change needed here) ---
                 if hasattr(final_state_vector, "get"):
                     state_vector_np = final_state_vector.get()
                 else:
                     state_vector_np = final_state_vector
-
                 probabilities = np.abs(state_vector_np) ** 2
                 sorted_indices = np.argsort(probabilities)[::-1]
                 best_valid_path = None
@@ -151,8 +160,8 @@ class PathPlanningService:
                         )
                         found_valid = True
                         break
-
                 if best_valid_path is None:
+                    # Fallback (print warnings)
                     print(
                         "\nWarning: No valid TSP state found among highly probable states."
                     )
@@ -165,20 +174,24 @@ class PathPlanningService:
                     path = self._decode_binary_state_to_path(state_binary, num_points)
                 else:
                     path = best_valid_path
+                # --- End Decoding ---
+
             except Exception as e:
-                pbar.close()
+                # pbar is closed automatically by 'with', but ensure newline
                 print(f"\nError during state vector decoding: {e}")
                 raise RuntimeError("Failed to decode the final state vector.") from e
-            pbar.update(1)  # Final update
+            pbar.update(1)  # Final update before the bar disappears
 
         # --- Fin Barra de Progreso ---
 
         end_time = time.time()
-        print(f"\nTotal execution time: {end_time - start_time:.2f} seconds.")
+        # Final output is now clean as the bar has been removed by leave=False
+        print(f"Total execution time: {end_time - start_time:.2f} seconds.")
         return path
 
     # --- Métodos Auxiliares (_calculate_distance_matrix, etc.) ---
     # (No changes needed in the helper methods)
+    # ... (rest of the helper methods remain the same) ...
     def _calculate_distance_matrix(self, points: list) -> np.ndarray:
         num_points = len(points)
         points_array = np.array(points, dtype=self.numpy_real_dtype)
@@ -271,6 +284,3 @@ class PathPlanningService:
             return np.all(row_sums == 1) and np.all(col_sums == 1)
         except Exception:
             return False
-
-
-# --- Fin de la clase PathPlanningService ---
