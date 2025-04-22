@@ -74,12 +74,13 @@ class PathPlanningService:
             initial_parameters, method=self.optimizer
         )
 
-        # Ejecuta el circuito QAOA mediante muestreo y decodifica resultados
+        # Ejecuta circuito y obtiene statevector
         qaoa.set_parameters(best_params)
-        # Use execute with shots
-        result = qaoa.execute(shots=self.shots)
-        # Decodifica el resultado usando frecuencias de medición
-        return self._decode_result(result, points, num_qubits)
+        state = qaoa.execute()
+        # Muestra localmente usando el statevector
+        counts = self._sample_counts(state, self.shots, num_qubits)
+        # Decodifica recuentos de medición
+        return self._decode_result(counts, points, num_qubits)
 
     def _calculate_distance_matrix(self, points):
         """
@@ -131,12 +132,14 @@ class PathPlanningService:
 
         return hamiltonians.SymbolicHamiltonian(H_cost + penalty * H_cons)
 
-    def _decode_result(self, result, points, num_qubits):
+    def _decode_result(self, counts, points, num_qubits):
         """
         Decode the result of the quantum computation into a valid path.
         """
         num_points = len(points)
-        counts = result.frequencies()
+        # If passed a result object with frequencies(), extract counts
+        if not isinstance(counts, dict):
+            counts = counts.frequencies()
         # Normalize keys by removing spaces
         processed_counts = {s.replace(" ", ""): c for s, c in counts.items()}
         # Select the most probable bitstring satisfying row/column constraints
@@ -180,3 +183,20 @@ class PathPlanningService:
             if sum(bitstring[i * n + j] == "1" for i in range(n)) != 1:
                 return False
         return True
+
+    def _sample_counts(self, statevector, shots, num_qubits):
+        """
+        Generate measurement counts from statevector by sampling.
+        """
+        probs = np.abs(statevector) ** 2
+        # Sample indices according to probabilities
+        indices = np.random.choice(len(probs), size=shots, p=probs)
+        from collections import Counter
+
+        counter = Counter(indices)
+        # Build bitstring count dict
+        freq = {}
+        for idx, cnt in counter.items():
+            bitstr = format(idx, f"0{num_qubits}b")
+            freq[bitstr] = cnt
+        return freq
