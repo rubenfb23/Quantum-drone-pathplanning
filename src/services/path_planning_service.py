@@ -35,7 +35,7 @@ class PathPlanningService:
             penalty_weight (float): The penalty weight for the constraints.
                 Defaults to None.
         """
-        set_backend("qibojit", platform="cupy")  # Optimized for GPU
+        set_backend("qibojit", platform="cuquantum")  # Optimized for GPU
         self.depth = depth
         self.optimizer = optimizer
         self.shots = shots
