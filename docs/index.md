@@ -9,6 +9,7 @@ The project implements a QAOA-based solution to the Traveling Salesman Problem (
 ## Getting Started
 
 - Install dependencies: `pip install -r requirements.txt`
+- Ensure you have a CUDA-compatible GPU and the CUDA toolkit installed
 - Prepare input points:
   - Edit `points.csv` with `x,y` headers or supply your own CSV file.
 - Run the main script:

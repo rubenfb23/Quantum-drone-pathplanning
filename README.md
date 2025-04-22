@@ -10,6 +10,13 @@ This project demonstrates a quantum algorithm for drone path-planning using Qibo
 - `docs/`: Project documentation and API reference.
 - `requirements.txt`: Python dependencies.
 
+## GPU Support
+
+This project now supports GPU execution via Qibo's CUDA backend. Ensure you have:
+ 1. A CUDA-compatible GPU.
+ 2. NVIDIA CUDA toolkit installed.
+ 3. Installed dependencies via `pip install -r requirements.txt`.
+
 ## How It Works
 
 1. **Define Points**: Specify a list of (x, y) coordinates representing locations the drone must visit.

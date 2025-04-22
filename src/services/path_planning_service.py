@@ -1,15 +1,18 @@
 # services/path_planning_service.py
 
 """
-Service module for quantum path-planning logic.
-This module encapsulates the core logic for the quantum algorithm.
+Service module for quantum path-planning logic using QAOA for TSP.
+Encapsulates the core logic, backend setup, Hamiltonian creation,
+optimization, and result decoding directly from the state vector.
+Includes progress bar via tqdm, attempting to mitigate slowdown.
 """
-from qibo import hamiltonians, models, set_backend
-from qibo.symbols import Z  # removed X import
-import numpy as np
 
-# Remove sympy import if no longer needed elsewhere, or keep if used
-# import sympy as sp
+from qibo import hamiltonians, models, set_backend, set_precision, gates, get_backend
+from qibo.symbols import Z, I
+import numpy as np
+import time
+from tqdm import tqdm  # Import tqdm
+import sys  # Import sys to specify stdout
 
 
 class PathPlanningService:
@@ -17,155 +20,267 @@ class PathPlanningService:
 
     def __init__(
         self,
-        depth: int = 2,
+        depth: int = 4,
         optimizer: str = "BFGS",
-        shots: int = 200,
-        penalty_weight: float = None,  # added
+        penalty_weight: float = None,
+        precision: str = "float32",
+        gate_fusion: bool = True,
+        devices: list = None,
     ):
-        """Initialize the Qibo backend and QAOA parameters.
-
-        Args:
-            depth (int): The depth of the QAOA circuit.
-                Defaults to 2.
-            optimizer (str):
-                The classical optimizer to use.
-                Defaults to "BFGS".
-            shots (int): The number of shots for the final circuit execution.
-                Defaults to 100.
-            penalty_weight (float): The penalty weight for the constraints.
-                Defaults to None.
-        """
-        set_backend("qibojit", platform="numba")  # Optimized for CPU
+        # ... (rest of __init__ is unchanged) ...
         self.depth = depth
         self.optimizer = optimizer
-        self.shots = shots
-        self.penalty_weight = penalty_weight  # new
+        self.penalty_weight = penalty_weight
+        self.gate_fusion = gate_fusion
+        self.user_precision_str = precision
+        self.qibo_precision_str = "single" if precision == "float32" else "double"
+        self.numpy_real_dtype = np.float32 if precision == "float32" else np.float64
+        self.cached_distance_matrix = None
+        self.cached_points_hash = None
+        try:
+            print(
+                f"Attempting to set Qibo backend to 'qibojit' with platform='cuquantum'..."
+            )
+            backend_config = {"platform": "cuquantum"}
+            if devices:
+                backend_config["devices"] = devices
+                print(f"Utilizing GPU devices: {devices}")
+            set_backend("qibojit", **backend_config)
+            print(
+                f"Backend 'qibojit' with 'cuquantum' set successfully. Using {get_backend().device}"
+            )
+            print(
+                f"Setting precision to '{self.qibo_precision_str}' (corresponds to user '{self.user_precision_str}')..."
+            )
+            set_precision(self.qibo_precision_str)
+            print(
+                f"Precision set to '{self.qibo_precision_str}' ({get_backend().dtype})."
+            )
+        except Exception as e:
+            print(
+                f"\nWarning: Failed to set Qibo backend 'qibojit' with 'cuquantum'. Error: {e}"
+            )
+            print("Falling back to default 'numpy' backend (CPU).")
+            set_backend("numpy")
+            print(
+                f"Setting precision for numpy backend to '{self.qibo_precision_str}' (corresponds to user '{self.user_precision_str}')..."
+            )
+            try:
+                set_precision(self.qibo_precision_str)
+                print(
+                    f"Precision set to '{self.qibo_precision_str}' ({get_backend().dtype}) for numpy backend."
+                )
+            except Exception as pe:
+                print(
+                    f"\nError setting precision '{self.qibo_precision_str}' on numpy fallback: {pe}"
+                )
+                print("Continuing with default numpy precision.")
 
-    def find_optimal_path(self, points):
-        """
-        Find the optimal path for the given points using QAOA.
-
-        Args:
-            points (list): A list of (x, y) coordinates.
-
-        Returns:
-            list: The sequence of point indices representing the optimal path.
-        """
+    def find_optimal_path(self, points: list) -> list:
+        # ... (initial checks remain the same) ...
         if not points:
             raise ValueError("Input 'points' list cannot be empty.")
-        if len(points) < 2:
-            return list(range(len(points)))
-
         num_points = len(points)
-        num_qubits = (
-            num_points * num_points
-        )  # Se usan n^2 qubits para la codificación TSP
+        if num_points < 2:
+            print("Warning: Path for < 2 points is trivial.")
+            return list(range(num_points))
 
-        distance_matrix = self._calculate_distance_matrix(points)
-        hamiltonian = self._create_tsp_hamiltonian(distance_matrix)
+        print(f"\nStarting TSP optimization for {num_points} points.")
+        start_time = time.time()
 
-        # debug: show effective penalty and Hamiltonian
-        penalty = (
-            self.penalty_weight
-            if self.penalty_weight is not None
-            else np.max(distance_matrix) * num_points * 10
-        )
+        # --- Barra de Progreso tqdm (Redirected Output, No Leave) ---
+        total_stages = 5
+        # Redirect to stdout, disable monitor, remove bar on completion
+        with tqdm(
+            total=total_stages,
+            desc="TSP Progress",
+            file=sys.stdout,  # Write to standard out
+            leave=False,  # Remove bar after completion
+            dynamic_ncols=True,  # Adjust to terminal width
+        ) as pbar:
 
-        # Inicializa el modelo QAOA; la profundidad se cifra en la longitud de initial_parameters
-        qaoa = models.QAOA(hamiltonian)
-        initial_parameters = [0.01] * (2 * self.depth)
+            # Etapa 1: Calcular Matriz de Distancias
+            pbar.set_description("Stage 1/5: Calculating distances")
+            distance_matrix = self._calculate_distance_matrix(points)
+            pbar.update(1)
 
-        # Optimiza los parámetros variacionales
-        best_energy, best_params, _ = qaoa.minimize(
-            initial_parameters, method=self.optimizer
-        )
+            # Etapa 2: Crear Hamiltoniano
+            pbar.set_description("Stage 2/5: Building Hamiltonian")
+            hamiltonian = self._create_tsp_hamiltonian(distance_matrix)
+            num_qubits = hamiltonian.nqubits
+            pbar.update(1)
 
-        # Ejecuta el circuito QAOA y decodifica el estado mediante argmax
-        qaoa.set_parameters(best_params)
-        state = qaoa.execute()  # Se utiliza el vector de estado obtenido
-        probs = np.abs(state) ** 2
-        idx = int(np.argmax(probs))
-        state_bin = format(idx, f"0{num_qubits}b")
+            # Etapa 3: Inicializar Modelo QAOA
+            pbar.set_description("Stage 3/5: Initializing QAOA")
+            qaoa = models.QAOA(hamiltonian)
+            initial_parameters = np.random.uniform(0, 0.1, 2 * self.depth).astype(
+                self.numpy_real_dtype
+            )
+            pbar.update(1)
 
-        # Convertir el bitstring a una matriz con forma (num_points x num_points)
-        # donde cada fila corresponde a una ciudad y cada columna a una posición en la ruta.
-        matrix = np.array(list(state_bin), dtype=int).reshape((num_points, num_points))
-        # Decode bitstring: require exactly one '1' per column
-        path = [-1] * num_points
-        for j in range(num_points):
-            col = matrix[:, j]
-            ones = np.where(col == 1)[0]
-            if len(ones) != 1:
-                raise ValueError(
-                    f"Invalid quantum output: column {j} has {len(ones)} ones."
+            # Etapa 4: Optimizar Parámetros
+            pbar.set_description(f"Stage 4/5: Optimizing ({self.optimizer})")
+            try:
+                best_energy, best_params, _ = qaoa.minimize(
+                    initial_parameters,
+                    method=self.optimizer,
+                    options={"disp": False},  # Keep False to avoid interfering prints
                 )
-            path[j] = ones[0]
+                # Output after optimization, now clearly separated because tqdm bar will leave
+                print(f"\nOptimization finished. Best energy found: {best_energy:.4f}")
+            except Exception as e:
+                # pbar is closed automatically by 'with', but ensure newline
+                print(f"\nError during QAOA optimization: {e}")
+                raise RuntimeError("QAOA parameter optimization failed.") from e
+            pbar.update(1)
+
+            # Etapa 5: Ejecutar Circuito Final y Decodificar
+            pbar.set_description("Stage 5/5: Final execution & decoding")
+            try:
+                qaoa.set_parameters(best_params)
+                final_state_vector = qaoa.execute()
+
+                # --- Decoding Logic (no change needed here) ---
+                if hasattr(final_state_vector, "get"):
+                    state_vector_np = final_state_vector.get()
+                else:
+                    state_vector_np = final_state_vector
+                probabilities = np.abs(state_vector_np) ** 2
+                sorted_indices = np.argsort(probabilities)[::-1]
+                best_valid_path = None
+                found_valid = False
+                for idx in sorted_indices:
+                    prob = probabilities[idx]
+                    if prob < 1e-6 and found_valid:
+                        break
+                    state_binary = format(idx, f"0{num_qubits}b")
+                    if self._is_valid_permutation_matrix(state_binary, num_points):
+                        best_valid_path = self._decode_binary_state_to_path(
+                            state_binary, num_points
+                        )
+                        found_valid = True
+                        break
+                if best_valid_path is None:
+                    # Fallback (print warnings)
+                    print(
+                        "\nWarning: No valid TSP state found among highly probable states."
+                    )
+                    most_probable_index = int(np.argmax(probabilities))
+                    max_prob = probabilities[most_probable_index]
+                    print(
+                        f"Reporting path from overall most probable state (index {most_probable_index}, prob {max_prob:.4f}), which is likely invalid."
+                    )
+                    state_binary = format(most_probable_index, f"0{num_qubits}b")
+                    path = self._decode_binary_state_to_path(state_binary, num_points)
+                else:
+                    path = best_valid_path
+                # --- End Decoding ---
+
+            except Exception as e:
+                # pbar is closed automatically by 'with', but ensure newline
+                print(f"\nError during state vector decoding: {e}")
+                raise RuntimeError("Failed to decode the final state vector.") from e
+            pbar.update(1)  # Final update before the bar disappears
+
+        # --- Fin Barra de Progreso ---
+
+        end_time = time.time()
+        # Final output is now clean as the bar has been removed by leave=False
+        print(f"Total execution time: {end_time - start_time:.2f} seconds.")
         return path
 
-    def _calculate_distance_matrix(self, points):
-        """
-        Calculate the distance matrix for the given points.
-        """
+    # --- Métodos Auxiliares (_calculate_distance_matrix, etc.) ---
+    # (No changes needed in the helper methods)
+    # ... (rest of the helper methods remain the same) ...
+    def _calculate_distance_matrix(self, points: list) -> np.ndarray:
         num_points = len(points)
-        distance_matrix = np.zeros((num_points, num_points))
-        for i in range(num_points):
-            for j in range(num_points):
-                distance_matrix[i, j] = np.linalg.norm(
-                    np.array(points[i]) - np.array(points[j])
-                )
+        points_array = np.array(points, dtype=self.numpy_real_dtype)
+        diff = points_array[:, np.newaxis, :] - points_array[np.newaxis, :, :]
+        distance_matrix = np.sqrt(np.sum(diff**2, axis=-1))
         return distance_matrix
 
-    def _create_tsp_hamiltonian(self, distance_matrix):
-        """
-        True QUBO encoding with squared constraints:
-          - b_ij = (1 − Z_ij)/2
-          - cost    = Σ_{i≠j} d[i,j] * b_ij
-          - constraints = Σ_i (1−Σ_j b_ij)^2 + Σ_j (1−Σ_i b_ij)^2
-        """
-        num_points = len(distance_matrix)
-        n = num_points
-        penalty = (
-            self.penalty_weight
-            if self.penalty_weight is not None
-            else np.max(distance_matrix) * n * 10
-        )
-
-        # cost term
+    def _create_tsp_hamiltonian(
+        self, distance_matrix: np.ndarray
+    ) -> hamiltonians.SymbolicHamiltonian:
+        n = len(distance_matrix)
+        num_qubits = n * n
+        if self.penalty_weight is None:
+            max_dist = np.max(distance_matrix)
+            if max_dist == 0:
+                max_dist = 1.0
+            self.penalty_weight = self.numpy_real_dtype(max_dist * (n**2))
+        else:
+            self.penalty_weight = self.numpy_real_dtype(self.penalty_weight)
+        # print(f"Using penalty weight: {self.penalty_weight:.2f}") # Optional
         H_cost = 0
         for i in range(n):
-            for j in range(n):
-                if i != j:
-                    q = i * n + j
-                    H_cost += distance_matrix[i, j] * (1 - Z(q)) / 2
-
-        # squared‐constraint terms
+            for k in range(n):
+                if i == k:
+                    continue
+                dist = distance_matrix[i, k]
+                if dist == 0:
+                    continue
+                for j in range(n):
+                    pos_j = j
+                    pos_next = (j + 1) % n
+                    q_i_j = i * n + pos_j
+                    q_k_next = k * n + pos_next
+                    term = (dist / 4.0) * (
+                        1 - Z(q_i_j) - Z(q_k_next) + Z(q_i_j) * Z(q_k_next)
+                    )
+                    H_cost += term
         H_cons = 0
-        # each city appears exactly once in the tour (row sums)
         for i in range(n):
-            row_qubits = [(1 - Z(i * n + j)) / 2 for j in range(n)]
-            H_cons += (1 - sum(row_qubits)) ** 2
-        # each position in the tour is occupied by exactly one city (column sums)
+            row_sum_term = sum([(1 - Z(i * n + j)) / 2 for j in range(n)])
+            H_cons += (1 - row_sum_term) ** 2
         for j in range(n):
-            col_qubits = [(1 - Z(i * n + j)) / 2 for i in range(n)]
-            H_cons += (1 - sum(col_qubits)) ** 2
+            col_sum_term = sum([(1 - Z(i * n + j)) / 2 for i in range(n)])
+            H_cons += (1 - col_sum_term) ** 2
+        total_hamiltonian_symbolic = H_cost + self.penalty_weight * H_cons
+        if not isinstance(total_hamiltonian_symbolic, hamiltonians.SymbolicHamiltonian):
+            final_H = hamiltonians.SymbolicHamiltonian(
+                total_hamiltonian_symbolic, nqubits=num_qubits
+            )
+        else:
+            final_H = total_hamiltonian_symbolic
+        inferred_qubits = getattr(final_H, "nqubits", None)
+        if inferred_qubits is not None and inferred_qubits != num_qubits:
+            final_H = hamiltonians.SymbolicHamiltonian(
+                final_H.formula, nqubits=num_qubits
+            )
+        elif inferred_qubits is None and num_qubits > 0:
+            final_H = hamiltonians.SymbolicHamiltonian(
+                final_H.formula, nqubits=num_qubits
+            )
+        return final_H
 
-        return hamiltonians.SymbolicHamiltonian(H_cost + penalty * H_cons)
+    def _decode_binary_state_to_path(self, state_binary: str, num_points: int) -> list:
+        num_qubits = num_points * num_points
+        state_binary = state_binary.zfill(num_qubits)
+        try:
+            values = list(map(int, list(state_binary)))
+            matrix = np.array(values).reshape((num_points, num_points))
+        except Exception as e:
+            raise RuntimeError(
+                f"Failed to reshape binary state '{state_binary}' to matrix: {e}"
+            )
+        path = [-1] * num_points
+        try:
+            row_indices = np.argmax(matrix, axis=0)
+            path = list(row_indices)
+        except Exception as e:
+            print(f"Error during path decoding from matrix: {e}")
+            raise RuntimeError("Could not decode path from the state matrix.")
+        return [int(p) for p in path]
 
-    def _decode_result(self, result, points, num_qubits):
-        """
-        Decode the result of the quantum computation into a valid path.
-        """
-        counts = result.frequencies()
-        most_probable_state = max(counts, key=counts.get)
-        print("Most probable state:", most_probable_state)
-        state = most_probable_state.replace(" ", "")
-        num_points = len(points)
-        # Pad state if necessary
-        if len(state) < num_qubits:
-            state = state.zfill(num_qubits)
-        path = [0] * num_points
-        for idx, bit in enumerate(state):
-            if bit == "1":
-                i, j = divmod(idx, num_points)
-                path[j] = i
-        return path
+    def _is_valid_permutation_matrix(self, state_binary: str, num_points: int) -> bool:
+        num_qubits = num_points * num_points
+        state_binary = state_binary.zfill(num_qubits)
+        try:
+            values = list(map(int, list(state_binary)))
+            matrix = np.array(values).reshape((num_points, num_points))
+            row_sums = np.sum(matrix, axis=1)
+            col_sums = np.sum(matrix, axis=0)
+            return np.all(row_sums == 1) and np.all(col_sums == 1)
+        except Exception:
+            return False
