@@ -3,3 +3,4 @@ numpy
 matplotlib
 numba
 scipy
+qibojit
