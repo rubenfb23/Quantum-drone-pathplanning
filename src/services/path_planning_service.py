@@ -2,15 +2,23 @@
 Service module for quantum path-planning logic using QAOA for TSP.
 Encapsulates the core logic, backend setup, Hamiltonian creation,
 optimization, and result decoding directly from the state vector.
-Includes a single progress bar via tqdm that updates in one line.
+Includes a progress bar via tqdm.
 """
 
 import time
+import threading
 import numpy as np
-
-from qibo import hamiltonians, models, set_backend, set_precision, get_backend, gates
+from qibo import hamiltonians, models, set_backend, set_precision, gates, get_backend
 from qibo.symbols import Z, I
 from tqdm import tqdm
+
+
+# Definición de una clase personalizada para forzar que todas las barras usen la misma posición.
+class SingleTqdm(tqdm):
+    def __init__(self, *args, **kwargs):
+        kwargs.setdefault("position", 0)
+        kwargs.setdefault("leave", True)
+        super().__init__(*args, **kwargs)
 
 
 class PathPlanningService:
@@ -74,6 +82,12 @@ class PathPlanningService:
                 )
                 print("Continuing with default numpy precision.")
 
+    def _update_pbar(self, pbar, stop_event):
+        """Actualiza la barra de progreso de forma continua hasta que se activa stop_event."""
+        while not stop_event.is_set():
+            pbar.refresh()
+            time.sleep(0.1)
+
     def find_optimal_path(self, points: list) -> list:
         if not points:
             raise ValueError("Input 'points' list cannot be empty.")
@@ -86,86 +100,104 @@ class PathPlanningService:
         start_time = time.time()
         total_stages = 5
 
-        # Usamos una sola barra de progreso configurada para actualizarse en una única línea.
-        with tqdm(
-            total=total_stages,
-            desc="TSP Optimization Progress",
-            position=0,
-            leave=True,
-            bar_format="{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}]",
-        ) as pbar:
-            pbar.set_description("Stage 1/5: Calculating distances")
-            distance_matrix = self._calculate_distance_matrix(points)
-            pbar.update(1)
-
-            pbar.set_description("Stage 2/5: Building Hamiltonian")
-            hamiltonian = self._create_tsp_hamiltonian(distance_matrix)
-            num_qubits = hamiltonian.nqubits
-            pbar.update(1)
-
-            pbar.set_description("Stage 3/5: Initializing QAOA")
-            qaoa = models.QAOA(hamiltonian)
-            initial_parameters = np.random.uniform(0, 0.1, 2 * self.depth).astype(
-                self.numpy_real_dtype
+        # Usamos nuestra barra de progresos personalizada SingleTqdm
+        with SingleTqdm(total=total_stages, desc="TSP Optimization Progress") as pbar:
+            stop_event = threading.Event()
+            updater_thread = threading.Thread(
+                target=self._update_pbar, args=(pbar, stop_event)
             )
-            pbar.update(1)
+            updater_thread.start()
 
-            pbar.set_description(f"Stage 4/5: Optimizing ({self.optimizer})")
             try:
-                best_energy, best_params, _ = qaoa.minimize(
-                    initial_parameters, method=self.optimizer, options={"disp": False}
-                )
-                print(f"\nOptimization finished. Best energy found: {best_energy:.4f}")
-            except Exception as e:
-                pbar.close()
-                print(f"\nError during QAOA optimization: {e}")
-                raise RuntimeError("QAOA parameter optimization failed.") from e
-            pbar.update(1)
+                pbar.set_description("Stage 1/5: Calculating distances")
+                distance_matrix = self._calculate_distance_matrix(points)
+                pbar.update(1)
 
-            pbar.set_description("Stage 5/5: Final execution & decoding")
-            try:
-                qaoa.set_parameters(best_params)
-                final_state_vector = qaoa.execute()
-                state_vector_np = (
-                    final_state_vector.get()
-                    if hasattr(final_state_vector, "get")
-                    else final_state_vector
-                )
-                probabilities = np.abs(state_vector_np) ** 2
-                sorted_indices = np.argsort(probabilities)[::-1]
+                pbar.set_description("Stage 2/5: Building Hamiltonian")
+                hamiltonian = self._create_tsp_hamiltonian(distance_matrix)
+                num_qubits = hamiltonian.nqubits
+                pbar.update(1)
 
-                best_valid_path = None
-                found_valid = False
-                for idx in sorted_indices:
-                    if probabilities[idx] < 1e-6 and found_valid:
-                        break
-                    state_binary = format(idx, f"0{num_qubits}b")
-                    if self._is_valid_permutation_matrix(state_binary, num_points):
-                        best_valid_path = self._decode_binary_state_to_path(
+                pbar.set_description("Stage 3/5: Initializing QAOA")
+                qaoa = models.QAOA(hamiltonian)
+                initial_parameters = np.random.uniform(0, 0.1, 2 * self.depth).astype(
+                    self.numpy_real_dtype
+                )
+                pbar.update(1)
+
+                # Para la optimización forzamos que cualquier barra interna use SingleTqdm.
+                pbar.set_description(f"Stage 4/5: Optimizing ({self.optimizer})")
+                old_tqdm = tqdm.tqdm
+                try:
+                    tqdm.tqdm = SingleTqdm
+                    best_energy, best_params, _ = qaoa.minimize(
+                        initial_parameters,
+                        method=self.optimizer,
+                        options={"disp": False},
+                    )
+                    print(
+                        f"\nOptimization finished. Best energy found: {best_energy:.4f}"
+                    )
+                except Exception as e:
+                    print(f"\nError during QAOA optimization: {e}")
+                    raise RuntimeError("QAOA parameter optimization failed.") from e
+                finally:
+                    tqdm.tqdm = old_tqdm
+                pbar.update(1)
+
+                # De igual forma, para la ejecución final
+                pbar.set_description("Stage 5/5: Final execution & decoding")
+                try:
+                    tqdm.tqdm = SingleTqdm
+                    qaoa.set_parameters(best_params)
+                    final_state_vector = qaoa.execute()
+                    state_vector_np = (
+                        final_state_vector.get()
+                        if hasattr(final_state_vector, "get")
+                        else final_state_vector
+                    )
+                    probabilities = np.abs(state_vector_np) ** 2
+                    sorted_indices = np.argsort(probabilities)[::-1]
+
+                    best_valid_path = None
+                    found_valid = False
+                    for idx in sorted_indices:
+                        if probabilities[idx] < 1e-6 and found_valid:
+                            break
+                        state_binary = format(idx, f"0{num_qubits}b")
+                        if self._is_valid_permutation_matrix(state_binary, num_points):
+                            best_valid_path = self._decode_binary_state_to_path(
+                                state_binary, num_points
+                            )
+                            found_valid = True
+                            break
+
+                    if best_valid_path is None:
+                        print(
+                            "\nWarning: No valid TSP state found among highly probable states."
+                        )
+                        most_probable_index = int(np.argmax(probabilities))
+                        max_prob = probabilities[most_probable_index]
+                        print(
+                            f"Reporting path from overall most probable state (index {most_probable_index}, prob {max_prob:.4f}), which is likely invalid."
+                        )
+                        state_binary = format(most_probable_index, f"0{num_qubits}b")
+                        path = self._decode_binary_state_to_path(
                             state_binary, num_points
                         )
-                        found_valid = True
-                        break
-
-                if best_valid_path is None:
-                    print(
-                        "\nWarning: No valid TSP state found among highly probable states."
-                    )
-                    most_probable_index = int(np.argmax(probabilities))
-                    max_prob = probabilities[most_probable_index]
-                    print(
-                        f"Reporting path from overall most probable state (index {most_probable_index}, prob {max_prob:.4f}), which is likely invalid."
-                    )
-                    state_binary = format(most_probable_index, f"0{num_qubits}b")
-                    path = self._decode_binary_state_to_path(state_binary, num_points)
-                else:
-                    path = best_valid_path
-            except Exception as e:
-                pbar.close()
-                print(f"\nError during state vector decoding: {e}")
-                raise RuntimeError("Failed to decode the final state vector.") from e
-
-            pbar.update(1)
+                    else:
+                        path = best_valid_path
+                except Exception as e:
+                    print(f"\nError during state vector decoding: {e}")
+                    raise RuntimeError(
+                        "Failed to decode the final state vector."
+                    ) from e
+                finally:
+                    tqdm.tqdm = old_tqdm
+                pbar.update(1)
+            finally:
+                stop_event.set()
+                updater_thread.join()
 
         end_time = time.time()
         print(f"\nTotal execution time: {end_time - start_time:.2f} seconds.")
