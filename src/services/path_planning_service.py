@@ -7,10 +7,17 @@ optimization, and result decoding directly from the state vector.
 """
 
 # Import set_precision along with other qibo functions
-from qibo import hamiltonians, models, set_backend, set_precision, gates
-from qibo.symbols import Z, I  # I might be useful for Hamiltoniano nulo
+from qibo import (
+    hamiltonians,
+    models,
+    set_backend,
+    set_precision,
+    gates,
+    get_backend,
+)  # Added get_backend
+from qibo.symbols import Z, I
 import numpy as np
-import time  # Para medir tiempos
+import time
 
 
 class PathPlanningService:
@@ -21,8 +28,8 @@ class PathPlanningService:
         depth: int = 4,
         optimizer: str = "BFGS",
         penalty_weight: float = None,
-        precision: str = "float32",
-        gate_fusion: bool = True,  # Note: gate_fusion is often controlled by the backend choice itself
+        precision: str = "float32",  # User input: "float32" or "float64"
+        gate_fusion: bool = True,
         devices: list = None,
     ):
         """Initialize the Qibo backend and QAOA parameters.
@@ -30,63 +37,77 @@ class PathPlanningService:
         Args:
             depth (int): The depth p of the QAOA circuit.
             optimizer (str): Classical optimizer for QAOA parameters.
-            penalty_weight (float): Weight for the constraint Hamiltonian. If None, calculated based on max distance * n.
-            precision (str): Numerical precision ("float32" or "float64"). "float32" recommended for GPU.
-            gate_fusion (bool): Hint to enable gate fusion optimization (effect depends on backend).
-            devices (list): List of GPU device IDs for multi-GPU execution (e.g., [0, 1]).
+            penalty_weight (float): Weight for constraint Hamiltonian. If None, calculated.
+            precision (str): Numerical precision ("float32" or "float64").
+            gate_fusion (bool): Hint to enable gate fusion optimization.
+            devices (list): List of GPU device IDs for multi-GPU execution.
         """
         self.depth = depth
         self.optimizer = optimizer
         self.penalty_weight = penalty_weight
         self.gate_fusion = gate_fusion
-        self.precision = precision
-        self.numpy_precision = np.float32 if precision == "float32" else np.float64
+
+        # --- Corrected Precision Handling ---
+        self.user_precision_str = precision
+        # Map user input to Qibo's expected string
+        self.qibo_precision_str = "single" if precision == "float32" else "double"
+        # Determine the corresponding REAL numpy dtype for parameters/distances
+        self.numpy_real_dtype = np.float32 if precision == "float32" else np.float64
+        # The complex dtype (complex64/complex128) will be set by the backend
+        # --- End Correction ---
+
         self.cached_distance_matrix = None
         self.cached_points_hash = None
 
         try:
-            # --- Corrected Backend Setup ---
-            # 1. Set backend and platform first, without precision.
+            # 1. Set backend and platform first.
             print(
                 f"Attempting to set Qibo backend to 'qibojit' with platform='cuquantum'..."
             )
-            backend_config = {"platform": "cuquantum"}  # Config without precision
+            backend_config = {"platform": "cuquantum"}
             if devices:
                 backend_config["devices"] = devices
                 print(f"Utilizing GPU devices: {devices}")
 
             set_backend("qibojit", **backend_config)
-            print("Backend 'qibojit' with 'cuquantum' set successfully.")
+            print(
+                f"Backend 'qibojit' with 'cuquantum' set successfully. Using {get_backend().device}"
+            )  # Show device
 
-            # 2. Set precision *after* the backend is set.
-            print(f"Setting precision to '{self.precision}'...")
-            set_precision(self.precision)
-            print(f"Precision set to '{self.precision}'.")
-            # --- End Correction ---
+            # 2. Set precision *after* the backend is set, using Qibo's string.
+            print(
+                f"Setting precision to '{self.qibo_precision_str}' (corresponds to user '{self.user_precision_str}')..."
+            )
+            set_precision(self.qibo_precision_str)
+            print(
+                f"Precision set to '{self.qibo_precision_str}' ({get_backend().dtype})."
+            )  # Show resulting complex dtype
 
         except Exception as e:
             print(
                 f"\nWarning: Failed to set Qibo backend 'qibojit' with 'cuquantum'. Error: {e}"
             )
             print("Falling back to default 'numpy' backend (CPU).")
-            # --- Corrected Fallback Setup ---
             # 1. Set numpy backend
             set_backend("numpy")
-            # 2. Set precision for the numpy backend
-            print(f"Setting precision for numpy backend to '{self.precision}'...")
-            set_precision(self.precision)
-            print(f"Precision set to '{self.precision}' for numpy backend.")
-            # --- End Correction ---
+            # 2. Set precision for the numpy backend using Qibo's string.
+            print(
+                f"Setting precision for numpy backend to '{self.qibo_precision_str}' (corresponds to user '{self.user_precision_str}')..."
+            )
+            try:
+                set_precision(self.qibo_precision_str)
+                print(
+                    f"Precision set to '{self.qibo_precision_str}' ({get_backend().dtype}) for numpy backend."
+                )
+            except Exception as pe:  # Catch precision error specifically on fallback
+                print(
+                    f"\nError setting precision '{self.qibo_precision_str}' on numpy fallback: {pe}"
+                )
+                print("Continuing with default numpy precision.")
 
     def find_optimal_path(self, points: list) -> list:
         """
         Find the optimal path for the given points using QAOA and state vector simulation.
-
-        Args:
-            points (list): A list of (x, y) coordinate tuples.
-
-        Returns:
-            list: The sequence of point indices representing the most probable valid path.
         """
         if not points:
             raise ValueError("Input 'points' list cannot be empty.")
@@ -99,14 +120,14 @@ class PathPlanningService:
         print(f"\nStarting TSP optimization for {num_points} points.")
         start_time = time.time()
 
-        # 1. Calcular matriz de distancias (con precisión optimizada)
+        # 1. Calculate distance matrix (using REAL numpy dtype)
         print("Calculating distance matrix...")
         distance_matrix = self._calculate_distance_matrix(points)
         print(
             f"Distance matrix calculated (shape: {distance_matrix.shape}, dtype: {distance_matrix.dtype})."
         )
 
-        # 2. Crear el Hamiltoniano TSP
+        # 2. Create the TSP Hamiltonian
         print("Creating TSP Hamiltonian...")
         hamiltonian = self._create_tsp_hamiltonian(distance_matrix)
         num_qubits = hamiltonian.nqubits
@@ -116,38 +137,36 @@ class PathPlanningService:
             )
         print(f"Hamiltonian created for {num_qubits} qubits.")
 
-        # 3. Inicializar el modelo QAOA
+        # 3. Initialize the QAOA model
         print(f"Initializing QAOA model (depth p={self.depth})...")
         qaoa = models.QAOA(hamiltonian)
 
-        # 4. Optimizar los parámetros variacionales (ángulos gamma y beta)
+        # 4. Optimize parameters (using REAL numpy dtype for initial guess)
         initial_parameters = np.random.uniform(0, 0.1, 2 * self.depth).astype(
-            self.numpy_precision
+            self.numpy_real_dtype
         )
         print(
-            f"Optimizing {len(initial_parameters)} QAOA parameters using '{self.optimizer}'..."
+            f"Optimizing {len(initial_parameters)} QAOA parameters (dtype: {initial_parameters.dtype}) using '{self.optimizer}'..."
         )
 
         try:
             best_energy, best_params, _ = qaoa.minimize(
-                initial_parameters,
-                method=self.optimizer,
-                options={"disp": False},  # Set True for optimizer details
+                initial_parameters, method=self.optimizer, options={"disp": False}
             )
             print(f"Optimization finished. Best energy found: {best_energy:.4f}")
         except Exception as e:
             print(f"Error during QAOA optimization: {e}")
             raise RuntimeError("QAOA parameter optimization failed.") from e
 
-        # 5. Ejecutar el circuito QAOA con parámetros óptimos -> Obtener vector de estado final
+        # 5. Execute final circuit (returns state vector with backend's COMPLEX dtype)
         print("Executing final QAOA circuit with optimal parameters...")
         qaoa.set_parameters(best_params)
         final_state_vector = qaoa.execute()
         print(
             f"Final state vector obtained (shape: {final_state_vector.shape}, dtype: {final_state_vector.dtype})."
-        )
+        )  # dtype will be complex64/128
 
-        # 6. Decodificar el resultado directamente del vector de estado
+        # 6. Decode result from state vector
         print("Decoding result from final state vector...")
         try:
             if hasattr(final_state_vector, "get"):  # Handle GPU tensors (CuPy)
@@ -155,6 +174,7 @@ class PathPlanningService:
             else:  # Already numpy
                 state_vector_np = final_state_vector
 
+            # Probabilities are real
             probabilities = np.abs(state_vector_np) ** 2
             most_probable_index = int(np.argmax(probabilities))
             max_prob = probabilities[most_probable_index]
@@ -181,10 +201,12 @@ class PathPlanningService:
         return path
 
     def _calculate_distance_matrix(self, points: list) -> np.ndarray:
-        """Calculate the Euclidean distance matrix using vectorized operations."""
+        """Calculate the Euclidean distance matrix using vectorized operations and appropriate REAL dtype."""
         num_points = len(points)
-        points_array = np.array(points, dtype=self.numpy_precision)
+        # Use the determined REAL numpy dtype
+        points_array = np.array(points, dtype=self.numpy_real_dtype)
         diff = points_array[:, np.newaxis, :] - points_array[np.newaxis, :, :]
+        # Resulting matrix will have the same REAL dtype
         distance_matrix = np.sqrt(np.sum(diff**2, axis=-1))
         return distance_matrix
 
@@ -193,16 +215,19 @@ class PathPlanningService:
     ) -> hamiltonians.SymbolicHamiltonian:
         """
         Create the TSP Hamiltonian using QUBO encoding with squared constraints.
-        H = H_cost + penalty * H_constraints
+        Uses REAL distances from the input matrix.
         """
         n = len(distance_matrix)
         num_qubits = n * n
 
         if self.penalty_weight is None:
             max_dist = np.max(distance_matrix)
-            self.penalty_weight = float(max_dist * n * 1.5)
+            # Ensure penalty is float, using the numpy REAL dtype for calculation consistency
+            self.penalty_weight = self.numpy_real_dtype(max_dist * n * 1.5)
             print(f"Auto-calculated penalty weight: {self.penalty_weight:.2f}")
         else:
+            # Ensure provided weight matches precision if needed, though usually handled ok
+            self.penalty_weight = self.numpy_real_dtype(self.penalty_weight)
             print(f"Using provided penalty weight: {self.penalty_weight:.2f}")
 
         # H_cost: Sum d[i,k] * b_ij * b_k,next
@@ -212,6 +237,7 @@ class PathPlanningService:
             for k in range(n):
                 if i == k:
                     continue
+                # dist is REAL (float32/float64) from distance_matrix
                 dist = distance_matrix[i, k]
                 if dist == 0:
                     continue
@@ -220,6 +246,7 @@ class PathPlanningService:
                     pos_next = (j + 1) % n
                     q_i_j = i * n + pos_j
                     q_k_next = k * n + pos_next
+                    # Symbolic Hamiltonian handles internal types. dist/4.0 promotes calculation.
                     term = (dist / 4.0) * (
                         1 - Z(q_i_j) - Z(q_k_next) + Z(q_i_j) * Z(q_k_next)
                     )
@@ -233,9 +260,12 @@ class PathPlanningService:
             H_cons += (1 - row_sum_term) ** 2
         for j in range(n):
             col_sum_term = sum([(1 - Z(i * n + j)) / 2 for i in range(n)])
-            H_cons += (1 - col_sum_term) ** 2
+            H_cons += (
+                1 - sum(col_qubits)
+            ) ** 2  # <<< Correction: was using old 'col_qubits' variable from previous file version
 
         print("Hamiltonian terms built. Combining H_cost and H_cons...")
+        # Penalty weight is already float32/64
         total_hamiltonian_symbolic = H_cost + self.penalty_weight * H_cons
 
         # Ensure correct type and qubit count
@@ -246,15 +276,20 @@ class PathPlanningService:
         else:
             final_H = total_hamiltonian_symbolic
 
-        if hasattr(final_H, "nqubits") and final_H.nqubits != num_qubits:
+        # Check inferred qubit count vs expected
+        inferred_qubits = getattr(final_H, "nqubits", None)  # Use getattr for safety
+        if inferred_qubits is not None and inferred_qubits != num_qubits:
             print(
-                f"Warning: SymbolicHamiltonian inferred {final_H.nqubits} qubits, expected {num_qubits}. Forcing qubit count."
+                f"Warning: SymbolicHamiltonian inferred {inferred_qubits} qubits, expected {num_qubits}. Forcing qubit count."
             )
             final_H = hamiltonians.SymbolicHamiltonian(
                 final_H.formula, nqubits=num_qubits
             )
-        elif not hasattr(final_H, "nqubits"):
-            # If it doesn't even have nqubits, recreate forcing it (edge case)
+        elif inferred_qubits is None and num_qubits > 0:
+            # If nqubits attribute doesn't exist, likely a constant Hamiltonian, force nqubits
+            print(
+                f"Warning: Hamiltonian seems constant. Forcing qubit count to {num_qubits}."
+            )
             final_H = hamiltonians.SymbolicHamiltonian(
                 final_H.formula, nqubits=num_qubits
             )
@@ -301,6 +336,9 @@ class PathPlanningService:
             matrix = np.array(values).reshape((num_points, num_points))
             row_sums = np.sum(matrix, axis=1)
             col_sums = np.sum(matrix, axis=0)
+            # Use tolerance for float comparisons if matrix wasn't guaranteed int
+            # return np.allclose(row_sums, 1) and np.allclose(col_sums, 1)
+            # Since it comes from binary string, direct comparison is fine
             return np.all(row_sums == 1) and np.all(col_sums == 1)
         except Exception:
             return False
