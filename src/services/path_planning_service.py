@@ -192,6 +192,11 @@ class PathPlanningService:
         if hasattr(statevector, "get"):
             statevector = statevector.get()
         probs = np.abs(statevector) ** 2
+        # Normalize probabilities to sum to 1 to avoid sampling errors
+        total_prob = probs.sum()
+        if total_prob == 0:
+            raise ValueError("Probabilities sum to zero, cannot sample.")
+        probs = probs / total_prob
         # Sample indices according to probabilities
         indices = np.random.choice(len(probs), size=shots, p=probs)
         from collections import Counter
