@@ -79,7 +79,7 @@ def main():
     OPTIMIZER = "BFGS"
     PRECISION = "float32"  # Use single precision for GPU.
     GATE_FUSION = True  # Enable gate fusion if supported by the backend.
-    DEVICES = {0, 1}  # Use default GPU (or CPU if configuration fails).
+    DEVICES = 1  # Use default GPU (or CPU if configuration fails).
 
     try:
         script_dir = os.path.dirname(__file__)
