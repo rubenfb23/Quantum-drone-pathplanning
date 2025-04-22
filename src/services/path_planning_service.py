@@ -10,9 +10,15 @@ import threading
 import numpy as np
 import tqdm as tqdm_module  # Importamos el módulo completo para poder hacer monkey patch.
 from tqdm import tqdm  # Esta es la clase/función de tqdm que usamos en el código.
+import warnings
 
 from qibo import hamiltonians, models, set_backend, set_precision, gates, get_backend
 from qibo.symbols import Z, I
+
+
+warnings.filterwarnings(
+    "ignore", category=RuntimeWarning, module="scipy.optimize._numdiff"
+)
 
 
 class SingleTqdm(tqdm):
