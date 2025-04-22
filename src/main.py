@@ -24,6 +24,24 @@ def load_points_from_csv(csv_file: str) -> List[Tuple[float, float]]:
     return points
 
 
+def _load_and_validate_points(csv_filename: str) -> List[Tuple[float, float]]:
+    """Load point coordinates from CSV and validate for TSP requirements."""
+    script_dir = os.path.dirname(__file__)
+    csv_path = os.path.join(script_dir, csv_filename)
+    points = load_points_from_csv(csv_path)
+    if not points:
+        print(f"Error: No points found in {csv_path}.")
+        raise ValueError("No points found.")
+    num_points = len(points)
+    if num_points < 2:
+        print("Warning: TSP requires at least 2 points.")
+    if num_points > 10:
+        print(
+            f"Warning: TSP with {num_points} points ({num_points**2} qubits) can be computationally intensive."
+        )
+    return points
+
+
 def plot_path(points: List[Tuple[float, float]], path: List[int]) -> None:
     """Visualize the path on a 2D map, connecting points in order and returning to start."""
     if not points or not path:
@@ -82,30 +100,17 @@ def main():
     DEVICES = None  # Use default GPU (or CPU if configuration fails).
 
     try:
-        script_dir = os.path.dirname(__file__)
-        csv_path = os.path.join(script_dir, "points.csv")
-        points = load_points_from_csv(csv_path)
+        points = _load_and_validate_points("points.csv")
         num_points = len(points)
-        print(f"Loaded {num_points} points from {csv_path}")
-
-        if num_points == 0:
-            print("Error: No points found in points.csv.")
-            return
-
-        if num_points > 10:
-            print(
-                f"Warning: TSP with {num_points} points ({num_points**2} qubits) can be computationally intensive."
-            )
-        if num_points < 2:
-            print("Warning: TSP requires at least 2 points.")
+        print(f"Loaded {num_points} points.")
     except FileNotFoundError:
-        print(f"Error: points.csv not found at {csv_path}")
+        print("Error: points.csv not found at expected location.")
         print(
             "Please create points.csv with 'x' and 'y' columns in the same directory."
         )
         return
-    except Exception as e:
-        print(f"Error loading points: {e}")
+    except ValueError as ve:
+        print(f"Input Error: {ve}")
         return
 
     service = PathPlanningService(
