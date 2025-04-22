@@ -8,12 +8,13 @@ Includes a progress bar via tqdm.
 import time
 import threading
 import numpy as np
+import tqdm as tqdm_module  # Importamos el módulo completo para poder hacer monkey patch.
+from tqdm import tqdm  # Esta es la clase/función de tqdm que usamos en el código.
+
 from qibo import hamiltonians, models, set_backend, set_precision, gates, get_backend
 from qibo.symbols import Z, I
-from tqdm import tqdm
 
 
-# Definición de una clase personalizada para forzar que todas las barras usen la misma posición.
 class SingleTqdm(tqdm):
     def __init__(self, *args, **kwargs):
         kwargs.setdefault("position", 0)
@@ -83,7 +84,7 @@ class PathPlanningService:
                 print("Continuing with default numpy precision.")
 
     def _update_pbar(self, pbar, stop_event):
-        """Actualiza la barra de progreso de forma continua hasta que se activa stop_event."""
+        """Continuously refresh the progress bar until stop_event is set."""
         while not stop_event.is_set():
             pbar.refresh()
             time.sleep(0.1)
@@ -100,8 +101,7 @@ class PathPlanningService:
         start_time = time.time()
         total_stages = 5
 
-        # Usamos nuestra barra de progresos personalizada SingleTqdm
-        with SingleTqdm(total=total_stages, desc="TSP Optimization Progress") as pbar:
+        with tqdm(total=total_stages, desc="TSP Optimization Progress") as pbar:
             stop_event = threading.Event()
             updater_thread = threading.Thread(
                 target=self._update_pbar, args=(pbar, stop_event)
@@ -125,11 +125,12 @@ class PathPlanningService:
                 )
                 pbar.update(1)
 
-                # Para la optimización forzamos que cualquier barra interna use SingleTqdm.
                 pbar.set_description(f"Stage 4/5: Optimizing ({self.optimizer})")
-                old_tqdm = tqdm.tqdm
+                old_tqdm = (
+                    tqdm_module.tqdm
+                )  # Guardamos la función original del módulo tqdm.
                 try:
-                    tqdm.tqdm = SingleTqdm
+                    tqdm_module.tqdm = SingleTqdm  # Forzamos que cualquier barra interna use SingleTqdm.
                     best_energy, best_params, _ = qaoa.minimize(
                         initial_parameters,
                         method=self.optimizer,
@@ -142,13 +143,13 @@ class PathPlanningService:
                     print(f"\nError during QAOA optimization: {e}")
                     raise RuntimeError("QAOA parameter optimization failed.") from e
                 finally:
-                    tqdm.tqdm = old_tqdm
+                    tqdm_module.tqdm = old_tqdm  # Reestablecemos la función original.
                 pbar.update(1)
 
-                # De igual forma, para la ejecución final
                 pbar.set_description("Stage 5/5: Final execution & decoding")
                 try:
-                    tqdm.tqdm = SingleTqdm
+                    old_tqdm = tqdm_module.tqdm
+                    tqdm_module.tqdm = SingleTqdm
                     qaoa.set_parameters(best_params)
                     final_state_vector = qaoa.execute()
                     state_vector_np = (
@@ -193,7 +194,7 @@ class PathPlanningService:
                         "Failed to decode the final state vector."
                     ) from e
                 finally:
-                    tqdm.tqdm = old_tqdm
+                    tqdm_module.tqdm = old_tqdm
                 pbar.update(1)
             finally:
                 stop_event.set()
@@ -275,6 +276,7 @@ class PathPlanningService:
             final_H = hamiltonians.SymbolicHamiltonian(
                 final_H.formula, nqubits=num_qubits
             )
+
         return final_H
 
     def _decode_binary_state_to_path(self, state_binary: str, num_points: int) -> list:
