@@ -104,11 +104,14 @@ class PathPlanningService:
         """
         num_points = len(distance_matrix)
         n = num_points
+        # Use stronger default penalty: scale with n^2
         penalty = (
             self.penalty_weight
             if self.penalty_weight is not None
-            else np.max(distance_matrix) * n * 10
+            else np.max(distance_matrix) * (n**2) * 10
         )
+        # Debug penalty weight
+        print(f"DEBUG penalty weight: {penalty}")
 
         # cost term
         H_cost = 0
@@ -172,6 +175,17 @@ class PathPlanningService:
                 "col_counts": col_counts,
             }
         print("DEBUG state_validation_info (top 10):", self.debug_state_validation_info)
+        # Compute constraint violation score for each of the top 10 states
+        self.debug_violation_scores = {}
+        for s, info in self.debug_state_validation_info.items():
+            row_violation = sum(abs(rc - 1) for rc in info["row_counts"])
+            col_violation = sum(abs(cc - 1) for cc in info["col_counts"])
+            self.debug_violation_scores[s] = row_violation + col_violation
+        # Show states closest to satisfying constraints (lowest violation score)
+        sorted_violations = sorted(
+            self.debug_violation_scores.items(), key=lambda x: x[1]
+        )
+        print("DEBUG violation_scores (top 10):", sorted_violations[:10])
         # Print debugging info
         print("DEBUG counts:", self.debug_counts)
         print("DEBUG processed_counts:", self.debug_processed_counts)
