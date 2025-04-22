@@ -156,6 +156,22 @@ class PathPlanningService:
         self.debug_valid_states = [
             s for s in sorted_states if self._is_valid_bitstring(s, num_points)
         ]
+        # Detailed state validation info for debugging
+        self.debug_state_validation_info = {}
+        for s in sorted_states[:10]:
+            row_counts = [
+                s[i * num_points : (i + 1) * num_points].count("1")
+                for i in range(num_points)
+            ]
+            col_counts = [
+                sum(s[i * num_points + j] == "1" for i in range(num_points))
+                for j in range(num_points)
+            ]
+            self.debug_state_validation_info[s] = {
+                "row_counts": row_counts,
+                "col_counts": col_counts,
+            }
+        print("DEBUG state_validation_info (top 10):", self.debug_state_validation_info)
         # Print debugging info
         print("DEBUG counts:", self.debug_counts)
         print("DEBUG processed_counts:", self.debug_processed_counts)
