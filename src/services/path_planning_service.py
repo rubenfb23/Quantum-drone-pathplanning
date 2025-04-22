@@ -145,62 +145,20 @@ class PathPlanningService:
             counts = counts.frequencies()
         # Normalize keys by removing spaces
         processed_counts = {s.replace(" ", ""): c for s, c in counts.items()}
-        # Debugging variables
-        self.debug_counts = counts
-        self.debug_processed_counts = processed_counts
         # Sort states by count (descending)
         sorted_states = sorted(
             processed_counts,
             key=processed_counts.get,
             reverse=True,
         )
-        self.debug_sorted_states = sorted_states
-        # Determine valid states among the sorted ones
-        self.debug_valid_states = [
-            s for s in sorted_states if self._is_valid_bitstring(s, num_points)
-        ]
-        # Detailed state validation info for debugging
-        self.debug_state_validation_info = {}
-        for s in sorted_states[:10]:
-            row_counts = [
-                s[i * num_points : (i + 1) * num_points].count("1")
-                for i in range(num_points)
-            ]
-            col_counts = [
-                sum(s[i * num_points + j] == "1" for i in range(num_points))
-                for j in range(num_points)
-            ]
-            self.debug_state_validation_info[s] = {
-                "row_counts": row_counts,
-                "col_counts": col_counts,
-            }
-        print("DEBUG state_validation_info (top 10):", self.debug_state_validation_info)
-        # Compute constraint violation score for each of the top 10 states
-        self.debug_violation_scores = {}
-        for s, info in self.debug_state_validation_info.items():
-            row_violation = sum(abs(rc - 1) for rc in info["row_counts"])
-            col_violation = sum(abs(cc - 1) for cc in info["col_counts"])
-            self.debug_violation_scores[s] = row_violation + col_violation
-        # Show states closest to satisfying constraints (lowest violation score)
-        sorted_violations = sorted(
-            self.debug_violation_scores.items(), key=lambda x: x[1]
-        )
-        print("DEBUG violation_scores (top 10):", sorted_violations[:10])
-        # Print debugging info
-        print("DEBUG counts:", self.debug_counts)
-        print("DEBUG processed_counts:", self.debug_processed_counts)
-        print("DEBUG sorted_states (top 10):", sorted_states[:10])
-        print("DEBUG valid_states:", self.debug_valid_states)
-        # Select the most probable bitstring satisfying row/column constraints
+        # Select the first valid bitstring satisfying row/column constraints
         valid_state = None
         for s in sorted_states:
             if self._is_valid_bitstring(s, num_points):
                 valid_state = s
                 break
         if valid_state is None:
-            # No valid state found after debugging
             raise ValueError("No valid solution found in measurement results.")
-        print("Selected valid state:", valid_state)
         state = valid_state
         # Pad state if necessary
         if len(state) < num_qubits:
