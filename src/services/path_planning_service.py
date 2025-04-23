@@ -45,8 +45,18 @@ class PathPlanningService:
         """
         Find the optimal path for the given points using QAOA.
 
+<<<<<<< Updated upstream
         Args:
             points (list): A list of (x, y) coordinates.
+=======
+    def _configure_backend(self, devices: Optional[list]):
+        # Force CPU execution: use numpy backend regardless of GPU availability
+        print("Configuring Qibo to use CPU (numpy) backend for path planning.")
+        set_backend("numpy")
+        print(f"Setting precision to '{self.qibo_precision_str}' on numpy backend...")
+        set_precision(self.qibo_precision_str)
+        print(f"Precision set to '{self.qibo_precision_str}' ({get_backend().dtype}).")
+>>>>>>> Stashed changes
 
         Returns:
             list: The sequence of point indices representing the optimal path.
