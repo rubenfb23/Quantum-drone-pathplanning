@@ -68,11 +68,22 @@ This project now supports GPU execution via Qibo's CUDA backend. Ensure you have
 - The decoding from quantum output to path is not fully implemented (returns a trivial path).
 
 ## Example Output
-A matplotlib window will display the points and the computed path.
+Below is an example animation of the drone path planning:
+
+![Drone Path Planning Animation](docs/drone_path_animation.gif)
 
 ---
 
-For further development, implement a full TSP Hamiltonian and decoding logic in `services/path_planning_service.py`.
+## Tests
+To validate the functionality of the project, run the automated tests with:
+```bash
+pytest
+```
+
+- **test_launch_plot_only.py**: Verifies the `--plot-only` option.
+- **test_plot_path.py**: Checks the path plotting logic.
+
+---
 
 ## License
 
