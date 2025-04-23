@@ -8,9 +8,12 @@ import os
 from typing import List, Tuple
 
 import matplotlib.pyplot as plt
+from matplotlib.animation import FuncAnimation, PillowWriter
+from scipy.interpolate import CubicSpline
 import numpy as np
+import argparse
 
-from services.path_planning_service import PathPlanningService
+from src.services.path_planning_service import PathPlanningService
 
 
 def load_points_from_csv(csv_file: str) -> List[Tuple[float, float]]:
@@ -37,25 +40,37 @@ def _load_and_validate_points(csv_filename: str) -> List[Tuple[float, float]]:
         print("Warning: TSP requires at least 2 points.")
     if num_points > 10:
         print(
-            f"Warning: TSP with {num_points} points ({num_points**2} qubits) can be computationally intensive."
+            f"Warning: TSP with {num_points} points "
+            f"({num_points**2} qubits) "
+            "can be computationally intensive."
         )
     return points
 
 
 def plot_path(points: List[Tuple[float, float]], path: List[int]) -> None:
-    """Visualize the path on a 2D map, connecting points in order and returning to start."""
+    """
+    Visualize the path on a 2D map, connecting points in order
+    and returning to start with animation.
+    """
     if not points or not path:
         raise ValueError("Both 'points' and 'path' must be non-empty.")
 
     if len(path) != len(points):
         print(
-            f"Warning: Path length ({len(path)}) doesn't match number of points ({len(points)}). Plot might be incorrect."
+            f"Warning: Path length ({len(path)}) doesn't match number of "
+            f"points ({len(points)}). "
+            f"Plot might be incorrect."
         )
 
     points_np = np.array(points)
     plt.figure(figsize=(10, 8))
     plt.scatter(
-        points_np[:, 0], points_np[:, 1], c="blue", label="Points", s=50, zorder=5
+        points_np[:, 0],
+        points_np[:, 1],
+        c="blue",
+        label="Points",
+        s=50,
+        zorder=5,
     )
 
     for i in range(len(points)):
@@ -68,7 +83,10 @@ def plot_path(points: List[Tuple[float, float]], path: List[int]) -> None:
 
     if not path:
         print("Cannot plot path: no valid points in the path list.")
-        plt.title(f"Drone Path Planning (TSP) - {len(points)} points - NO VALID PATH")
+        title_text = (
+            "Drone Path Planning (TSP) - " f"{len(points)} points - NO VALID PATH"
+        )
+        plt.title(title_text)
         plt.show()
         return
 
@@ -78,8 +96,43 @@ def plot_path(points: List[Tuple[float, float]], path: List[int]) -> None:
     # Close the TSP loop by returning to the starting point.
     path_points_x = np.append(path_points_x, points_np[path[0], 0])
     path_points_y = np.append(path_points_y, points_np[path[0], 1])
-    plt.plot(
-        path_points_x, path_points_y, "r-", label="Optimal Path (QAOA)", linewidth=1.5
+
+    # Fit cubic spline and animate drone
+    t = np.arange(len(path_points_x))
+    cs_x = CubicSpline(t, path_points_x, bc_type="periodic")
+    cs_y = CubicSpline(t, path_points_y, bc_type="periodic")
+    t_new = np.linspace(t[0], t[-1], 200)
+    xs_smooth = cs_x(t_new)
+    ys_smooth = cs_y(t_new)
+    (curve_line,) = plt.plot(
+        xs_smooth,
+        ys_smooth,
+        "r-",
+        label="Optimal Path (Cubic)",
+        linewidth=1.5,
+    )
+
+    # Initialize drone marker
+    (drone,) = plt.plot([], [], "ro", markersize=8, label="Drone")
+
+    def init():
+        drone.set_data([], [])
+        return (drone,)
+
+    def animate(i):
+        # Animate drone marker with single-point sequences
+        x = xs_smooth[i]
+        y = ys_smooth[i]
+        drone.set_data([x], [y])
+        return (drone,)
+
+    anim = FuncAnimation(
+        plt.gcf(),
+        animate,
+        frames=len(xs_smooth),
+        init_func=init,
+        interval=50,
+        blit=True,
     )
 
     plt.legend()
@@ -88,11 +141,29 @@ def plot_path(points: List[Tuple[float, float]], path: List[int]) -> None:
     plt.ylabel("Y Coordinate")
     plt.grid(True, linestyle="--", alpha=0.6)
     plt.axis("equal")
+    # Save animation to GIF for visibility during headless or test runs
+    output_file = os.path.join(os.getcwd(), "drone_path_plot.gif")
+    try:
+        anim.save(output_file, writer=PillowWriter(fps=20))
+        print(f"Animation saved to {output_file}")
+    except Exception as e:
+        print(f"Warning: could not save animation gif: {e}")
+    # Display plot (no-op under non-interactive backends)
     plt.show()
 
 
 def main():
     """Main function to execute the path-planning service."""
+    parser = argparse.ArgumentParser(description="Quantum Drone Path Planning")
+    parser.add_argument(
+        "--plot-only",
+        action="store_true",
+        help=(
+            "Only plot the points from the CSV " "without running the quantum algorithm"
+        ),
+    )
+    args = parser.parse_args()
+
     QAOA_DEPTH = 4  # Recommended: Increase depth for more complex problems.
     OPTIMIZER = "BFGS"
     PRECISION = "float32"  # Use single precision for GPU.
@@ -109,11 +180,18 @@ def main():
     except FileNotFoundError:
         print("Error: points.csv not found at expected location.")
         print(
-            "Please create points.csv with 'x' and 'y' columns in the same directory."
+            (
+                "Please create points.csv with 'x' and 'y' "
+                "columns in the same directory."
+            )
         )
         return
     except ValueError as ve:
         print(f"Input Error: {ve}")
+        return
+
+    if args.plot_only:
+        plot_path(points, list(range(len(points))))
         return
 
     service = PathPlanningService(
@@ -127,7 +205,8 @@ def main():
 
     try:
         print(
-            f"\nFinding optimal path for {num_points} points using QAOA (depth={QAOA_DEPTH})..."
+            "\nFinding optimal path for %d points "
+            "using QAOA (depth=%d)..." % (num_points, QAOA_DEPTH)
         )
         path = service.find_optimal_path(points)
         path_int = [int(p) for p in path]
