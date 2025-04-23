@@ -20,6 +20,6 @@ Visualizes a sequence of 2D points and the computed tour.
 ### main() -> None
 Executes example workflow:
 1. Loads points from `points.csv` using `load_points_from_csv`.
-2. Instantiates `PathPlanningService` with configurable depth, optimizer, and shots.
+2. Instantiates `PathPlanningService` with configurable parameters: depth, optimizer, penalty_weight, precision, gate_fusion, devices, and seed.
 3. Computes optimal path via QAOA.
 4. Calls `plot_path` to render the result.

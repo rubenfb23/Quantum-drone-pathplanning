@@ -1,6 +1,6 @@
 # Quantum Drone Path-Planning with Qibo
 
-This project demonstrates a quantum algorithm for drone path-planning using Qibo (Qiskit 2.0 compatible). The core logic is implemented in Python and leverages quantum optimization techniques to solve a simplified version of the Traveling Salesman Problem (TSP).
+This project demonstrates a quantum algorithm for drone path-planning using the Qibo quantum computing framework. The core logic is implemented in Python and leverages quantum optimization techniques to solve a simplified version of the Traveling Salesman Problem (TSP).
 
 ## Project Structure
 
@@ -38,14 +38,22 @@ This project now supports GPU execution via Qibo's CUDA backend. Ensure you have
    python main.py
    ```
 
-4. Customize QAOA parameters in `main.py`:
+4. Customize QAOA and service parameters in `main.py`:
    ```python
-   service = PathPlanningService(depth=3, optimizer="COBYLA", shots=200)
+   service = PathPlanningService(
+       depth=3,
+       optimizer="COBYLA",
+       penalty_weight=0.1,
+       precision="float32",
+       gate_fusion=True,
+       devices=[0],  # GPU device indices
+       seed=123
+   )
    ```
 
 ## Customization
 - **Input Points**: Modify `points.csv` or implement your own loader via `load_points_from_csv`.
-- **QAOA Parameters**: Adjust `depth`, `optimizer`, and `shots` when creating the service.
+- **QAOA Parameters**: Adjust `depth`, `optimizer`, and `penalty_weight`, as well as `precision`, `gate_fusion`, `devices`, and `seed` when creating the service.
 
 ## Clean Code Improvements
 - Clear and descriptive names for classes, methods, and variables.
