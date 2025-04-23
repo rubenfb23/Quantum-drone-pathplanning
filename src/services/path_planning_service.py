@@ -40,12 +40,17 @@ class PathPlanningService:
         precision: str = "float32",
         gate_fusion: bool = True,
         devices: Optional[list] = None,
+        seed: Optional[int] = None,
     ):
         self.depth = depth
         self.optimizer = optimizer
         self.penalty_weight = penalty_weight
         self.gate_fusion = gate_fusion
         self.user_precision_str = precision
+        self.seed = seed
+        if self.seed is not None:
+            np.random.seed(self.seed)
+            print(f"Random seed set to {self.seed} for reproducibility.")
         # Set precision strings and corresponding numpy dtype
         if precision == "float32":
             self.qibo_precision_str = "single"

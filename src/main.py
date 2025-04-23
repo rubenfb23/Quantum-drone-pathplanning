@@ -99,6 +99,9 @@ def main():
     GATE_FUSION = True  # Enable gate fusion if supported by the backend.
     DEVICES = None  # Use default GPU (or CPU if configuration fails).
 
+    # Reproducibility seed
+    SEED = 42  # set to desired integer for consistent runs
+
     try:
         points = _load_and_validate_points("points.csv")
         num_points = len(points)
@@ -119,6 +122,7 @@ def main():
         precision=PRECISION,
         gate_fusion=GATE_FUSION,
         devices=DEVICES,
+        seed=SEED,
     )
 
     try:
