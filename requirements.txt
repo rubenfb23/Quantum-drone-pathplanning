@@ -7,3 +7,4 @@ qibojit
 cuquantum-python-cu12
 cupy-cuda12x
 tqdm
+pytest
