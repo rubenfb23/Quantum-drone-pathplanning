@@ -10,7 +10,7 @@ Service class for quantum path-planning using Qibo.
 PathPlanningService(
     depth: int = 4,
     optimizer: str = "BFGS",
-    penalty_weight: Optional[float] = None,
+    penalty_weight: float = 1.0,
     precision: str = "float32",
     gate_fusion: bool = True,
     devices: Optional[List[int]] = None,
@@ -19,7 +19,7 @@ PathPlanningService(
 ```
 - **depth**: Depth of the QAOA circuit (default: 4).
 - **optimizer**: Classical optimizer for parameter minimization (default: "BFGS").
-- **penalty_weight**: Weight for constraint penalties; if `None`, computed automatically from max distance.
+- **penalty_weight**: Weight for constraint penalties (default: 1.0).
 - **precision**: Numeric precision for quantum computations (`"float32"` or `"float64").
 - **gate_fusion**: Enable gate fusion if supported by the backend (default: `True`).
 - **devices**: List of GPU device indices; if `None`, uses default device.

@@ -16,13 +16,12 @@ The project implements a QAOA-based solution to the Traveling Salesman Problem (
   ```bash
   python main.py
   ```
-- (Optional) Customize QAOA and service parameters by editing `main.py`. Available options:
-  - `depth`, `optimizer`, `penalty_weight`, `precision`, `gate_fusion`, `devices`, and `seed`.
+- (Optional) Use the `--plot-only` flag to plot points without performing quantum optimization.
 
 ## Example Animation
 Below is an example animation demonstrating the drone path planning algorithm:
 
-![Drone Path Planning Animation](drone_path_animation.gif)
+![Drone Path Planning Animation](docs/drone_path_animation.gif)
 
 ## API Reference
 
