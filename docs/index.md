@@ -16,6 +16,8 @@ The project implements a QAOA-based solution to the Traveling Salesman Problem (
   ```bash
   python main.py
   ```
+- (Optional) Customize QAOA and service parameters by editing `main.py`. Available options:
+  - `depth`, `optimizer`, `penalty_weight`, `precision`, `gate_fusion`, `devices`, and `seed`.
 
 ## API Reference
 
