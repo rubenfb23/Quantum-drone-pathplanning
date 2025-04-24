@@ -30,31 +30,42 @@ class HamiltonianBuilder:
             logger.error(f"Failed to tune penalty weight: {e}")
             raise
 
-        # Cost term: vectorized for all valid i,k,j pairs
-        i_idx, k_idx = np.meshgrid(np.arange(n), np.arange(n), indexing="ij")
-        mask = (i_idx != k_idx) & (distance_matrix != 0)
-        flat_i = np.repeat(i_idx[mask], n)
-        flat_k = np.repeat(k_idx[mask], n)
-        j_pos = np.tile(np.arange(n), mask.sum())
-        pos_next = (j_pos + 1) % n
-        dist_vals = np.repeat(distance_matrix[i_idx[mask], k_idx[mask]], n)
-        qi = flat_i * n + j_pos
-        qk = flat_k * n + pos_next
-        terms = (dist_vals / 4.0) * (1 - Z(qi) - Z(qk) + Z(qi) * Z(qk))
-        H_cost = sum(terms)
+        # Cost term: loop to avoid numpy.ndarray in qubit indices
+        H_cost = None
+        for i in range(n):
+            for k in range(n):
+                if i != k and distance_matrix[i, k] != 0:
+                    v = float(distance_matrix[i, k])
+                    for j in range(n):
+                        qi = i * n + j
+                        qk = k * n + ((j + 1) % n)
+                        term = (v / 4.0) * (1 - Z(qi) - Z(qk) + Z(qi) * Z(qk))
+                        if H_cost is None:
+                            H_cost = term
+                        else:
+                            H_cost = H_cost + term
+        # Ensure H_cost is initialized
+        if H_cost is None:
+            H_cost = hamiltonians.SymbolicHamiltonian(0, nqubits=num_qubits)
 
-        # Constraint terms: row and column sums
+        # Constraint terms: enforce one visit per row and column via explicit loops
         row_terms = []
         for i in range(n):
-            ops = Z(i * n + np.arange(n))
-            row_sum = np.sum((1 - ops) / 2, axis=0)
-            row_terms.append((1 - row_sum) ** 2)
+            row_sum_op = None
+            for j in range(n):
+                op = (1 - Z(i * n + j)) / 2
+                row_sum_op = op if row_sum_op is None else row_sum_op + op
+            row_terms.append((1 - row_sum_op) ** 2)
         col_terms = []
         for j in range(n):
-            ops = Z(np.arange(n) * n + j)
-            col_sum = np.sum((1 - ops) / 2, axis=0)
-            col_terms.append((1 - col_sum) ** 2)
-        H_cons = sum(row_terms) + sum(col_terms)
+            col_sum_op = None
+            for i in range(n):
+                op = (1 - Z(i * n + j)) / 2
+                col_sum_op = op if col_sum_op is None else col_sum_op + op
+            col_terms.append((1 - col_sum_op) ** 2)
+        H_cons = None
+        for term in row_terms + col_terms:
+            H_cons = term if H_cons is None else H_cons + term
 
         total = H_cost + weight * H_cons
         if not isinstance(total, hamiltonians.SymbolicHamiltonian):
