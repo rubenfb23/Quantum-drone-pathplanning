@@ -19,9 +19,10 @@ This project now supports GPU execution via Qibo's CUDA backend. Ensure you have
 
 ## How It Works
 
-1. **Define Points**: Specify a list of (x, y) coordinates representing locations the drone must visit.
-2. **Quantum Optimization**: The service encodes the TSP as a quantum Hamiltonian and uses QAOA (Quantum Approximate Optimization Algorithm) to find an optimal path.
-3. **Visualization**: The resulting path is plotted on a 2D map.
+- **Define Points**: Specify a list of (x, y) coordinates representing locations the drone must visit.
+- **Distance Computation**: Uses Numba JIT-compiled parallel loops to efficiently compute pairwise Euclidean distances for large datasets.
+- **Quantum Optimization**: The service encodes the TSP as a quantum Hamiltonian and uses QAOA (Quantum Approximate Optimization Algorithm) to find an optimal path.
+- **Visualization**: The resulting path is plotted on a 2D map.
 
 ## Usage
 

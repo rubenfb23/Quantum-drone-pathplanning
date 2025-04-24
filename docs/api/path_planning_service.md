@@ -46,7 +46,7 @@ Steps:
 
 `_calculate_distance_matrix(points: List[Tuple[float, float]]) -> np.ndarray`
 
-Computes and caches pairwise Euclidean distances between points.
+Computes and caches pairwise Euclidean distances between points using Numba JIT-compiled parallel loops for high-performance vectorized computation.
 
 #### _create_tsp_hamiltonian(distance_matrix)
 
