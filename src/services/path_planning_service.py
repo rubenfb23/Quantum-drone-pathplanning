@@ -32,6 +32,8 @@ import traceback  # added for debugging exception tracebacks
 warnings.filterwarnings(
     "ignore", category=RuntimeWarning, module="scipy.optimize._numdiff"
 )
+warnings.filterwarnings("ignore", category=UserWarning)
+warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 
 class PathPlanningError(Exception):

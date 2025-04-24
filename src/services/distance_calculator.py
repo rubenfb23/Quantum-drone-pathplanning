@@ -1,5 +1,6 @@
 from typing import List
 import numpy as np
+import numba
 
 
 class DistanceCalculator:
@@ -13,8 +14,21 @@ class DistanceCalculator:
 
     def calculate(self, points: List[tuple], dtype: np.dtype) -> np.ndarray:
         """
-        Computes Euclidean distance matrix for `points`, caching results if input hasn't changed.
+        Computes the Euclidean distance matrix for `points` using Numba
+        parallel loops.
+        Caches results if input hasn't changed.
         """
+
+        @numba.njit(parallel=True)
+        def calculate_distances(points_array):
+            n = points_array.shape[0]
+            result = np.zeros((n, n), dtype=points_array.dtype)
+            for i in numba.prange(n):
+                for j in range(n):
+                    diff = points_array[i] - points_array[j]
+                    result[i, j] = np.sqrt(np.sum(diff * diff))
+            return result
+
         points_hash = hash(tuple(points))
         if (
             self._cached_points_hash == points_hash
@@ -23,8 +37,8 @@ class DistanceCalculator:
             return self._cached_distance_matrix
 
         points_array = np.array(points, dtype=dtype)
-        diff = points_array[:, None, :] - points_array[None, :, :]
-        distance_matrix = np.sqrt(np.sum(diff**2, axis=-1))
+        distance_matrix = calculate_distances(points_array)
+
         self._cached_points_hash = points_hash
         self._cached_distance_matrix = distance_matrix
         return distance_matrix

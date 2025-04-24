@@ -1,7 +1,7 @@
 qibo[cuda]
 numpy
 matplotlib
-numba
+numba>=0.56
 scipy
 qibojit
 cuquantum-python-cu12
