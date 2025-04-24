@@ -21,6 +21,21 @@ import argparse
 
 from src.services.path_planning_service import PathPlanningService
 
+# Monkey-patch CuQuantumBackend to avoid AttributeError in destructor
+try:
+    import qibojit.backends.gpu as _qj_gpu
+
+    def _safe_del(self):
+        if hasattr(self, "handle"):
+            try:
+                self.cusv.destroy(self.handle)
+            except Exception:
+                pass
+
+    _qj_gpu.CuQuantumBackend.__del__ = _safe_del
+except ImportError:
+    pass
+
 # Default CSV filename
 DEFAULT_CSV_FILENAME = "points.csv"
 
@@ -164,10 +179,10 @@ def plot_path(points: List[Tuple[float, float]], path: List[int]) -> None:
     plt.ylabel("Y Coordinate")
     plt.grid(True, linestyle="--", alpha=0.6)
     plt.axis("equal")
-    # Save animation to GIF for visibility during headless or test runs
-    output_file = os.path.join(os.getcwd(), "drone_path_plot.gif")
+    # Save animation GIF to project root for host visibility
+    output_file = project_root.joinpath("drone_path_plot.gif")
     try:
-        anim.save(output_file, writer=PillowWriter(fps=20))
+        anim.save(str(output_file), writer=PillowWriter(fps=20))
         print(f"Animation saved to {output_file}")
     except Exception as e:
         print(f"Warning: could not save animation gif: {e}")
