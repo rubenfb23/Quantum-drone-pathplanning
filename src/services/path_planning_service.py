@@ -27,6 +27,7 @@ from .qaoa_orchestrator import QaoaOrchestrator
 
 import logging
 from contextlib import contextmanager
+import traceback  # added for debugging exception tracebacks
 
 warnings.filterwarnings(
     "ignore", category=RuntimeWarning, module="scipy.optimize._numdiff"
@@ -195,8 +196,11 @@ class PathPlanningService:
                     stop_event.set()
                     updater_thread.join()
         except Exception as e:
-            logger.error(f"Path planning failed: {e}")
-            raise PathPlanningError("TSP optimization error.") from e
+            logger.exception("Path planning failed")  # logs full traceback
+            print(
+                f"\nDebug Traceback:\n{traceback.format_exc()}"
+            )  # show original error details
+            raise PathPlanningError(f"TSP optimization error: {e}") from e
 
         end_time = time.time()
         print(f"\nTotal execution time: {end_time - start_time:.2f} seconds.")
