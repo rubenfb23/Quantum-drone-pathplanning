@@ -63,10 +63,6 @@ This project now supports GPU execution via Qibo's CUDA backend. Ensure you have
 - Separation of concerns: quantum logic in the service, visualization in `main.py`.
 - Example usage and visualization included.
 
-## Limitations
-- The TSP Hamiltonian is a simplified placeholder. For real-world use, a full QUBO/Ising encoding is needed.
-- The decoding from quantum output to path is not fully implemented (returns a trivial path).
-
 ## Example Output
 Below is an example animation of the drone path planning:
 
